@@ -19,7 +19,7 @@ with st.sidebar.expander("🐄 Dati Zootecnici", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
         uba = st.number_input("UBA", min_value=1, step=1, value=None)
-        deposito_max = st.number_input("Capacità max deposito (kg)", min_value=1, step=100, value=100)
+        deposito_max = st.number_input("Capacità max deposito (kg)", min_value=1, step=200000, value=100)
     with col2:
         biomassa = st.number_input("Biomassa (kg/UBA/giorno)", min_value=0.0, step=0.1, value=None)
         deposito_0 = st.slider("Deposito iniziale (kg)", 0, round(deposito_max), 0)
