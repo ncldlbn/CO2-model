@@ -62,7 +62,7 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
             cursor.execute(
                 """
                 UPDATE Impianto 
-                SET nome = ?, deposito_max = ?, perc_effluenti_zootecnici = ?, perc_colture_scarti = ?, perc_trasporti = ?, energia_kw = ?
+                SET nome = ?, deposito_max = ?, perc_effluenti_zootecnici = ?, perc_colture_scarti = ?, perc_trasporti = ?, energia_prodotta = ?
                 WHERE id_impianto = ?
                 """,
                 (nome, deposito_max, perc_eff, perc_scarti, perc_trasporti, energia_kw, defaults["id_impianto"])
@@ -150,7 +150,7 @@ with tab2:
             st.number_input("Effluenti zootecnici [%]", min_value=0.0, max_value=100.0, step=1.0, key="nuovo_perc_eff")
         with col2:
             st.number_input("Colture e scarti [%]", min_value=0.0, max_value=100.0, step=1.0, key="nuovo_perc_scarti")
-        with col2:
+        with col3:
             st.number_input("Trasporti [%]", min_value=0.0, max_value=100.0, step=1.0, key="nuovo_perc_trasporti")
         
 
@@ -175,7 +175,7 @@ with tab2:
                         cursor = conn.cursor()
                         cursor.execute(
                             """
-                            INSERT INTO Impianto (nome, deposito_max, perc_effluenti_zootecnici, perc_colture_scarti, perc_trasporti, energia_kw)
+                            INSERT INTO Impianto (nome, deposito_max, perc_effluenti_zootecnici, perc_colture_scarti, perc_trasporti, energia_prodotta)
                             VALUES (?, ?, ?, ?, ?, ?)
                             """,
                             (dati["nome"], dati["deposito_max"], dati["perc_effluenti_zootecnici"],
