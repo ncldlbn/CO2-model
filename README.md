@@ -1,14 +1,6 @@
-Build the image
-```
-docker build -t co2-streamlit-app .
-```
+ 
+Per creare il database scrivere a terminale: 
 
-Run
 ```
-docker run -p 8501:8501 co2-streamlit-app
-```
-
-App is accessible in your browser
-```
-http://localhost:8501
+sqlite3 data.db < dbinit.sql
 ```
