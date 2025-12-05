@@ -11,14 +11,14 @@ def inserisci_allevatore(db_path, dati: dict):
                 "denominazione_sociale": <string>,
                 "id_impianto_associato": <int>,
                 "tipo_conferimento": <'mezzi' o 'tubazione'>,
-                "frequenza_conferimento": <int>,
+                "frequenza_conferimento_letame": <int>,
+                "frequenza_conferimento_liquame": <int>,
                 "id_trasporto": <int>,
                 "distanza_impianto": <float>,
                 "uba_letame": <int>,
                 "uba_liquame": <int>,
                 "prod_letame": <float>,
                 "prod_liquame": <float>,
-                "deposito_max": <float>,
                 "quota": <int opzionale>,
                 "portata": <float, solo se tipo_conferimento='tubazione'>,
                 "potenza": <float, solo se tipo_conferimento='tubazione'>,
@@ -41,23 +41,24 @@ def inserisci_allevatore(db_path, dati: dict):
 
     cursor.execute("""
         INSERT INTO allevatore (
-            denominazione_sociale, id_impianto_associato, tipo_conferimento,
+            denominazione_sociale, id_impianto_associato, frequenza_conferimento_letame,
+            frequenza_conferimento_liquame,
             frequenza_conferimento, id_trasporto, distanza_impianto,
             uba_letame, uba_liquame, prod_letame, prod_liquame,
-            deposito_max, quota, portata, potenza, ore
+            quota, portata, potenza, ore
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         dati.get('denominazione_sociale'),
         dati.get('id_impianto_associato'),
         tipo,
-        dati.get('frequenza_conferimento'),
+        dati.get('frequenza_conferimento_letame'),
+        dati.get('frequenza_conferimento_liquame'),
         dati.get('id_trasporto'),
         dati.get('distanza_impianto'),
         dati.get('uba_letame'),
         dati.get('uba_liquame'),
         dati.get('prod_letame'),
         dati.get('prod_liquame'),
-        dati.get('deposito_max'),
         dati.get('quota'),
         dati.get('portata'),
         dati.get('potenza'),
@@ -78,7 +79,6 @@ def inserisci_trasporto(db_path, dati: dict):
         dati (dict): dizionario con chiavi:
         {
             "tipo": <string>,           # es. 'camion', 'trattore', 'tubazione'
-            "EF": <float>,              # fattore di emissione
             "capacita_max": <float opzionale>
         }
     """
@@ -87,11 +87,10 @@ def inserisci_trasporto(db_path, dati: dict):
 
     cursor.execute("""
         INSERT INTO trasporti (
-            tipo, EF, capacita_max
-        ) VALUES (?, ?, ?)
+            tipo, capacita_max
+        ) VALUES (?, ?)
     """, (
         dati.get('tipo'),
-        dati.get('EF'),
         dati.get('capacita_max')
     ))
 
@@ -155,14 +154,18 @@ def inserisci_impianto(db_path, dati: dict):
     # 1️⃣ Inserimento dati generali impianto
     generali = dati['dati_generali']
     cursor.execute("""
-        INSERT INTO impianto (nome, deposito_max, Qout_liq, Qout_let, separazione)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO impianto (nome, deposito_max, separazione, olio_lubrificante, rifiuti, acqua, scarichi)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         generali.get('nome'),
         generali.get('deposito_max'),
         generali.get('Qout_liq'),
         generali.get('Qout_let'),
-        generali.get('separazione')
+        generali.get('separazione'),
+        generali.get('olio_lubrificante'),
+        generali.get('rifiuti'),
+        generali.get('acqua'),
+        generali.get('scarichi')
     ))
     id_impianto = cursor.lastrowid
 

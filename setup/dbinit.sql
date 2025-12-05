@@ -48,27 +48,46 @@ CREATE TABLE fattori_emissione (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     categoria TEXT NOT NULL,
     nome TEXT NOT NULL,
-    valore REAL NOT NULL,
-    unita TEXT NOT NULL
+    unita TEXT NOT NULL,
+    CO2_fossile REAL NOT NULL,
+    CO2_biogenica REAL NOT NULL,
+    CO2_dLUC REAL NOT NULL,
+    CO2_TOT REAL NOT NULL
 );
 
-INSERT INTO fattori_emissione (categoria, nome, valore, unita) VALUES
-('energia', 'EE_BT', 680.6468, 'kg CO2eq/kWh'),
-('energia', 'EE_MT', 0.6411, 'kg CO2eq/kWh'),
-('energia', 'calore', 0.2919, 'kg CO2eq/kWh'),
-('energia', 'metano', 0.2979, 'kg CO2eq/kWh'),
-('energia', 'LNG', 0.3731, 'kg CO2eq/kWh'),
-('energia', 'cogen_EE_BT', 0.0105, 'kg CO2eq/kWh'),
-('energia', 'cogen_EE_MT', 0.0103, 'kg CO2eq/kWh'),
+INSERT INTO fattori_emissione (
+    categoria,
+    nome,
+    unita,
+    CO2_fossile,
+    CO2_biogenica,
+    CO2_dLUC,
+    CO2_TOT
+) VALUES
+-- TRASPORTI
+('trasporti', 'camion_generico', 'kg CO2eq/tkm', 0.149, 0.0000446, 0.0000726, 0.14870955661),
+('trasporti', 'trattore', 'kg CO2eq/tkm', 0.385, 0.000328, 0.000661, 0.38554700566),
 
-('impianto', 'olio_lubrificante', 1.7778, 'kg CO2eq/kg'),
-('impianto', 'rifiuti_pericolosi', 0, 'kg CO2eq/kg'),
-('impianto', 'acqua', 0.3021, 'kg CO2eq/mc'),
-('impianto', 'scarichi', 0.3193, 'kg CO2eq/mc'),
+-- ENERGIA
+('energia', 'EE_BT', 'kg CO2eq/kWh', 0.62, 0.000437, 0.000068002629, 0.62056556662),
+('energia', 'EE_MT', 'kg CO2eq/kWh', 0.641, 0.000430, 0.000052093137, 0.64110542286),
+('energia', 'calore', 'kg CO2eq/kWh', 0.29183644, 0.000054349638, 0.000035925617, 0.29192671526),
+('energia', 'metano', 'kg CO2eq/kWh', 0.29780778, 0.00003139685, 0.000034164567, 0.29787334142),
+('energia', 'LNG', 'kg CO2eq/kWh', 0.37301856, 0.0000213559649, 0.000024002979, 0.37306391894),
+('energia', 'cogen_EE_BT', 'kg CO2eq/kWh', 0.00550425301323034, 0.00500826530389773, 0, 0.01051251832),
+('energia', 'cogen_EE_MT', 'kg CO2eq/kWh', 0.005370896117, 0.004886925185, 0, 0.01025782130),
 
-('altro', 'CO2_biogenica', 0.7374, 'kg CO2eq/unit'),
-('altro', 'digestato', 16.71, 'kg CO2eq/tonSS'),
-('altro', 'pollina', 3.5230, 'kg CO2eq/ton');
+-- IMPIANTO
+('impianto', 'olio_lubrificante', 'kg CO2eq/kg', 1.7753987, 0.0013156124, 0.0011052098, 1.77781952220),
+('impianto', 'rifiuti_recupero', 'kg CO2eq/kg', 0, 0, 0, 0.00000000000),
+('impianto', 'acqua', 'kg CO2eq/mc', 0.3009549, 0.00057622011, 0.00057831189, 0.30210943200),
+('impianto', 'scarichi', 'kg CO2eq/mc', 0.25789571, 0.061163242, 0.00028924199, 0.31934819399),
+
+-- ALTRO
+('altro', 'CO2_biogenica', 'kg CO2eq/unit', 0.7358888, 0.0010055334, 0.00049190182, 0.73738623522),
+('altro', 'digestato', 'kg CO2eq/tonSS', 0, 16.71, 0, 16.71),
+('altro', 'pollina', 'kg CO2eq/ton', 3.5121335, 0.00069309774, 0.01019444, 3.52302103774);
+
 
 -- =====================================
 -- TABELLA IMPIANTO
@@ -79,7 +98,11 @@ CREATE TABLE impianto (
     deposito_max REAL, -- mc
     Qout_liq REAL,     -- ton
     Qout_let REAL,     -- ton
-    separazione BOOLEAN
+    separazione BOOLEAN,
+    olio_lubrificante REAL,
+    rifiuti REAL,
+    acqua REAL,
+    scarichi REAL
 );
 
 -- =====================================
@@ -123,31 +146,3 @@ CREATE TABLE ricettori (
     FOREIGN KEY(id_impianto) REFERENCES impianto(id_impianto),
     FOREIGN KEY(id_trasporto) REFERENCES trasporti(id_trasporto)
 );
-
--- =====================================
--- TABELLA COSTANTI IMPIANTO
--- =====================================
-CREATE TABLE costanti_impianto (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL,
-    classe_potenza TEXT NOT NULL,
-    valore REAL NOT NULL,
-    unita TEXT NOT NULL
-);
-
-INSERT INTO costanti_impianto (nome, classe_potenza, valore, unita) VALUES
-('olio_lubrificante', 'P<500kW', 500, 'kg'),
-('olio_lubrificante', 'P<1000kW', 1000, 'kg'),
-('olio_lubrificante', 'P>1000kW', 2000, 'kg'),
-
-('rifiuti_pericolosi', 'P<500kW', 500, 'kg'),
-('rifiuti_pericolosi', 'P<1000kW', 1000, 'kg'),
-('rifiuti_pericolosi', 'P>1000kW', 2000, 'kg'),
-
-('acqua', 'P<500kW', 500, 'mc'),
-('acqua', 'P<1000kW', 1500, 'mc'),
-('acqua', 'P>1000kW', 2000, 'mc'),
-
-('scarichi', 'P<500kW', 500, 'mc'),
-('scarichi', 'P<1000kW', 1500, 'mc'),
-('scarichi', 'P>1000kW', 2000, 'mc');

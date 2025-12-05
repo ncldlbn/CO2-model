@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import sys
 import os
+import time
 
 from db import get_connection, create_tables
 
@@ -18,26 +19,31 @@ div.stButton > button {
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------------------- #
-# FUNZIONI
+# FUNZIONI CORRETTE
 # ---------------------------------------------------------------------------------------- #
 
 def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
-    """Form per visualizzare e modificare un allevatore"""
+    """Form per visualizzare e modificare un allevatore - VERSIONE CORRETTA"""
     
-    # Valori di default
+    # Inizializza session state per conferma eliminazione
+    if f"{key_prefix}_conferma_elimina" not in st.session_state:
+        st.session_state[f"{key_prefix}_conferma_elimina"] = False
+
+    # Valori di default ALLINEATI AL DATABASE
     defaults = {
         "id_allevatore": None,
         "denominazione_sociale": "",
         "id_impianto_associato": None,
-        "tipo_conferimento": "mezzi",
-        "frequenza_conferimento": 7,
+        "tipo_conferimento": "Mezzi",
+        "frequenza_conferimento_let": 30,
+        "frequenza_conferimento_liq": 30,
         "id_trasporto": None,
         "distanza_impianto": 0.0,
         "uba_letame": 0,
         "uba_liquame": 0,
         "prod_letame": 0.0,
         "prod_liquame": 0.0,
-        "deposito_max": 0.0,
+        "pollina": None,
         "quota": 0,
         "portata": None,
         "potenza": None,
@@ -64,56 +70,12 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
             key=f"{key_prefix}_quota"
         )
 
-    st.subheader("Dati Zootecnici")
-    col1, col2 = st.columns(2)
-    with col1:
-        uba_letame = st.number_input(
-            "UBA Letame *", 
-            value=defaults["uba_letame"], 
-            min_value=0, 
-            step=1, 
-            key=f"{key_prefix}_uba_letame"
-        )
-    with col2:
-        uba_liquame = st.number_input(
-            "UBA Liquame *", 
-            value=defaults["uba_liquame"], 
-            min_value=0, 
-            step=1, 
-            key=f"{key_prefix}_uba_liquame"
-        )
-    col1, col2 = st.columns(2)
-    with col1:
-        prod_letame = st.number_input(
-            "Prod. Letame (mc/UBA/anno) *", 
-            value=defaults["prod_letame"], 
-            min_value=0.0, 
-            step=0.1,
-            key=f"{key_prefix}_prod_letame"
-        )
-    with col2:
-        prod_liquame = st.number_input(
-            "Prod. Liquame (mc/UBA/anno) *", 
-            value=defaults["prod_liquame"], 
-            min_value=0.0, 
-            step=0.1,
-            key=f"{key_prefix}_prod_liquame"
-        )
-
-    deposito_max = st.number_input(
-        "Capacità max deposito (mc) *", 
-        value=defaults["deposito_max"], 
-        min_value=0.0, 
-        step=1.0, 
-        key=f"{key_prefix}_deposito_max"
-    )
-
     st.subheader("Conferimento")
     
     # Tipo conferimento
     tipo_conferimento = st.radio(
         "Tipo Conferimento *",
-        ["mezzi", "tubazione"],
+        ["Mezzi", "Tubazione"],
         index=0 if defaults["tipo_conferimento"] == "mezzi" else 1,
         key=f"{key_prefix}_tipo_conferimento"
     )
@@ -149,21 +111,21 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
         trasporti_data = cursor.fetchall()
         trasporti_dict = {row[1]: row[0] for row in trasporti_data}
         
-        if tipo_conferimento == "tubazione":
+        if tipo_conferimento == "Tubazione":
             # Per tubazione, imposta automaticamente il trasporto a "tubazione"
             id_trasporto = 0  # ID fisso per tubazione
-            trasporto_selected = "tubazione"
+            trasporto_selected = "Tubazione"
             st.selectbox(
                 "Tipo trasporto *",
-                ["tubazione"],
+                ["Tubazione"],
                 index=0,
                 key=f"{key_prefix}_trasporto",
                 disabled=True
             )
         else:
             # Per mezzi, mostra solo i trasporti che non sono tubazione
-            trasporti_mezzi = {name: id for name, id in trasporti_dict.items() if name != "tubazione"}
-            trasporti_names = list(trasporti_mezzi.keys())
+            trasporti_mezzi = [(name, id_val) for name, id_val in trasporti_dict.items() if name != "Tubazione"]
+            trasporti_names = [name for name, id_val in trasporti_mezzi]
             
             # Trova il tipo del trasporto corrente (escludendo tubazione)
             current_trasporto_name = None
@@ -179,34 +141,55 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
                 index=trasporto_index,
                 key=f"{key_prefix}_trasporto"
             )
-            id_trasporto = trasporti_mezzi[trasporto_selected]
 
-    # Mostra frequenza e distanza solo per conferimento con mezzi
-    if tipo_conferimento == "mezzi":
-        col1, col2 = st.columns(2)
-        with col1:
-            frequenza_conferimento = st.number_input(
-                "Frequenza Conferimento (giorni) *", 
-                value=defaults["frequenza_conferimento"], 
+            id_trasporto = None
+            for name, id_val in trasporti_mezzi:
+                if name == trasporto_selected:
+                    id_trasporto = id_val
+                    break
+
+    # Frequenze di conferimento separated per letame e liquame
+    col1, col2 = st.columns(2)
+    with col1:
+        if tipo_conferimento == "Tubazione":
+            # Per tubazione, disabilita frequenza letame e imposta a 0
+            frequenza_conferimento_let = st.number_input(
+                "Freq. Letame (giorni) *", 
+                value=0, 
+                min_value=0, 
+                step=1, 
+                key=f"{key_prefix}_frequenza_let",
+                disabled=True
+            )
+        else:
+            frequenza_conferimento_let = st.number_input(
+                "Freq. Letame (giorni) *", 
+                value=defaults["frequenza_conferimento_let"], 
                 min_value=1, 
                 step=1, 
-                key=f"{key_prefix}_frequenza"
+                key=f"{key_prefix}_frequenza_let"
             )
-        with col2:
-            distanza_impianto = st.number_input(
-                "Distanza Impianto (km) *", 
-                value=defaults["distanza_impianto"], 
-                min_value=0.0, 
-                step=0.1, 
-                key=f"{key_prefix}_distanza"
-            )
-    else:
-        # Per tubazione, usa valori predefiniti
-        frequenza_conferimento = 1  # Valore predefinito
-        distanza_impianto = 0.0     # Valore predefinito
+    with col2:
+        frequenza_conferimento_liq = st.number_input(
+            "Freq. Liquame (giorni) *", 
+            value=defaults["frequenza_conferimento_liq"], 
+            min_value=1, 
+            step=1, 
+            key=f"{key_prefix}_frequenza_liq"
+        )
+
+    # Distanza impianto
+    distanza_impianto = st.number_input(
+        "Distanza Impianto (km) *", 
+        value=defaults["distanza_impianto"], 
+        min_value=0.0, 
+        step=0.1, 
+        key=f"{key_prefix}_distanza"
+    )
 
     # Campi condizionali per tubazione
-    if tipo_conferimento == "tubazione":
+    if tipo_conferimento == "Tubazione":
+        st.subheader("Parametri Tubazione")
         col1, col2, col3 = st.columns(3)
         with col1:
             portata = st.number_input(
@@ -237,6 +220,195 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
         potenza = None
         ore = None
 
+    st.subheader("Dati Zootecnici")
+    
+    # Determina la modalità iniziale in base ai valori UBA esistenti
+    # Se UBA letame o liquame sono 1, allora siamo in modalità "Totali annui assoluti"
+    if defaults["uba_letame"] == 1 or defaults["uba_liquame"] == 1:
+        modalita_default = "Totali annui assoluti"
+    else:
+        modalita_default = "UBA e produzione annua"
+
+    # Scelta modalità inserimento
+    modalita_inserimento = st.radio(
+        "Modalità di inserimento dati zootecnici:",
+        ["Totali annui assoluti", "UBA e produzione annua"],
+        index=0 if modalita_default == "Totali annui assoluti" else 1,
+        key=f"{key_prefix}_modalita"
+    )
+
+    if tipo_conferimento == "Tubazione":
+        
+        if modalita_inserimento == "Totali annui assoluti":
+            # Modalità totali annui assoluti - solo liquame
+            col1, col2 = st.columns(2)
+            with col1:
+                totale_liquame = st.number_input(
+                    "Totale Liquame (ton/anno) *", 
+                    value=defaults["prod_liquame"] if defaults["uba_liquame"] == 1 else 0.0, 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_totale_liquame"
+                )
+            with col2:
+                totale_letame = st.number_input(
+                    "Totale Letame (ton/anno) *", 
+                    value=defaults["prod_letame"] if defaults["uba_letame"] == 1 else 0.0, 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_totale_letame",
+                    disabled=True
+                )
+            
+            # Per tubazione, forziamo letame a 0
+            uba_letame = 0
+            uba_liquame = 1
+            prod_letame = 0.0
+            prod_liquame = totale_liquame
+            
+        else:
+            # Modalità UBA e produzione annua - solo liquame
+            col1, col2 = st.columns(2)
+            with col1:
+                # UBA Letame disabilitato ma visibile
+                uba_letame = st.number_input(
+                    "UBA Letame", 
+                    value=0, 
+                    min_value=0, 
+                    step=1, 
+                    key=f"{key_prefix}_uba_letame",
+                    disabled=True
+                )
+            with col2:
+                uba_liquame = st.number_input(
+                    "UBA Liquame *", 
+                    value=defaults["uba_liquame"], 
+                    min_value=0, 
+                    step=1, 
+                    key=f"{key_prefix}_uba_liquame"
+                )
+            col1, col2 = st.columns(2)
+            with col1:
+                # Produzione Letame disabilitata ma visibile
+                prod_letame = st.number_input(
+                    "Prod. Letame (mc/UBA/anno)", 
+                    value=0.0, 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_prod_letame",
+                    disabled=True
+                )
+            with col2:
+                prod_liquame = st.number_input(
+                    "Prod. Liquame (mc/UBA/anno) *", 
+                    value=defaults["prod_liquame"], 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_prod_liquame"
+                )
+            
+            # Per tubazione, forziamo letame a 0
+            uba_letame = 0
+            prod_letame = 0.0
+            
+            # Calcola e mostra i totali per riferimento
+            if uba_liquame > 0 and prod_liquame > 0:
+                totale_calc_liquame = uba_liquame * prod_liquame
+                st.write(f"**Totale liquame calcolato:** {totale_calc_liquame:.1f} ton/anno")
+        
+        # Per tubazione, disabilita pollina e imposta a 0
+        pollina = 0.0
+        st.number_input(
+            "Pollina (ton/anno)", 
+            value=0.0, 
+            min_value=0.0, 
+            step=0.1, 
+            key=f"{key_prefix}_pollina",
+            disabled=True
+        )
+    
+    else:
+        # Conferimento con mezzi - entrambi i tipi di biomassa
+        if modalita_inserimento == "Totali annui assoluti":
+            # Modalità totali annui assoluti
+            col1, col2 = st.columns(2)
+            with col1:
+                totale_letame = st.number_input(
+                    "Totale Letame (ton/anno) *", 
+                    value=defaults["prod_letame"] if defaults["uba_letame"] == 1 else 0.0, 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_totale_letame"
+                )
+            with col2:
+                totale_liquame = st.number_input(
+                    "Totale Liquame (ton/anno) *", 
+                    value=defaults["prod_liquame"] if defaults["uba_liquame"] == 1 else 0.0, 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_totale_liquame"
+                )
+            
+            # Per totali annui, impostiamo UBA = 1 e produzione = totale
+            uba_letame = 1
+            uba_liquame = 1
+            prod_letame = totale_letame
+            prod_liquame = totale_liquame
+            
+        else:
+            # Modalità UBA e produzione annua (modalità originale)
+            col1, col2 = st.columns(2)
+            with col1:
+                uba_letame = st.number_input(
+                    "UBA Letame *", 
+                    value=defaults["uba_letame"], 
+                    min_value=0, 
+                    step=1, 
+                    key=f"{key_prefix}_uba_letame"
+                )
+            with col2:
+                uba_liquame = st.number_input(
+                    "UBA Liquame *", 
+                    value=defaults["uba_liquame"], 
+                    min_value=0, 
+                    step=1, 
+                    key=f"{key_prefix}_uba_liquame"
+                )
+            col1, col2 = st.columns(2)
+            with col1:
+                prod_letame = st.number_input(
+                    "Prod. Letame (mc/UBA/anno) *", 
+                    value=defaults["prod_letame"], 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_prod_letame"
+                )
+            with col2:
+                prod_liquame = st.number_input(
+                    "Prod. Liquame (mc/UBA/anno) *", 
+                    value=defaults["prod_liquame"], 
+                    min_value=0.0, 
+                    step=0.1,
+                    key=f"{key_prefix}_prod_liquame"
+                )
+            
+            # Calcola e mostra i totali per riferimento
+            if uba_letame > 0 and prod_letame > 0:
+                totale_calc_letame = uba_letame * prod_letame
+                st.write(f"**Totale letame calcolato:** {totale_calc_letame:.1f} ton/anno")
+            if uba_liquame > 0 and prod_liquame > 0:
+                totale_calc_liquame = uba_liquame * prod_liquame
+                st.write(f"**Totale liquame calcolato:** {totale_calc_liquame:.1f} ton/anno")
+        
+        # Per mezzi, pollina è abilitata
+        pollina = st.number_input(
+            "Pollina (ton/anno) *", 
+            value=defaults["pollina"] or 0.0, 
+            min_value=0.0, 
+            step=0.1, 
+            key=f"{key_prefix}_pollina"
+        )
+
     # Pulsanti finali
     st.markdown("---")
     
@@ -251,15 +423,16 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
                         id_allevatore=defaults["id_allevatore"],
                         denominazione_sociale=denominazione_sociale,
                         id_impianto_associato=id_impianto_associato,
-                        tipo_conferimento=tipo_conferimento,
-                        frequenza_conferimento=frequenza_conferimento,
+                        tipo_conferimento=tipo_conferimento.lower(),
+                        frequenza_conferimento_let=frequenza_conferimento_let,
+                        frequenza_conferimento_liq=frequenza_conferimento_liq,
                         id_trasporto=id_trasporto,
                         distanza_impianto=distanza_impianto,
                         uba_letame=uba_letame,
                         uba_liquame=uba_liquame,
                         prod_letame=prod_letame,
                         prod_liquame=prod_liquame,
-                        deposito_max=deposito_max,
+                        pollina=pollina, 
                         quota=quota,
                         portata=portata,
                         potenza=potenza,
@@ -270,20 +443,21 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
                     cursor.execute("""
                         UPDATE allevatore SET
                             denominazione_sociale = ?, id_impianto_associato = ?, tipo_conferimento = ?,
-                            frequenza_conferimento = ?, id_trasporto = ?, distanza_impianto = ?,
-                            uba_letame = ?, uba_liquame = ?, prod_letame = ?, prod_liquame = ?,
-                            deposito_max = ?, quota = ?, portata = ?, potenza = ?, ore = ?
+                            frequenza_conferimento_letame = ?, frequenza_conferimento_liquame = ?, id_trasporto = ?, distanza_impianto = ?,
+                            uba_letame = ?, uba_liquame = ?, prod_letame = ?, prod_liquame = ?, pollina = ?,
+                            quota = ?, portata = ?, potenza = ?, ore = ?
                         WHERE id_allevatore = ?
                     """, (
-                        denominazione_sociale, id_impianto_associato, tipo_conferimento,
-                        frequenza_conferimento, id_trasporto, distanza_impianto,
-                        uba_letame, uba_liquame, prod_letame, prod_liquame,
-                        deposito_max, quota, portata, potenza, ore,
+                        denominazione_sociale, id_impianto_associato, tipo_conferimento.lower(),
+                        frequenza_conferimento_let, frequenza_conferimento_liq, id_trasporto, distanza_impianto,
+                        uba_letame, uba_liquame, prod_letame, prod_liquame, pollina,
+                        quota, portata, potenza, ore,
                         defaults["id_allevatore"]
                     ))
                     
                     conn.commit()
-                    st.success("✅ Modifiche salvate con successo!")
+                    st.toast("✅ Modifiche salvate con successo!")
+                    time.sleep(1)
                     st.rerun()
                     
                 except ValueError as e:
@@ -295,8 +469,8 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
             if st.button("🗑️ Elimina", key=f"{key_prefix}_elimina", use_container_width=True):
                 st.session_state[f"{key_prefix}_conferma_elimina"] = True
 
-            if st.session_state.get(f"{key_prefix}_conferma_elimina", False):
-                st.markdown(f"**⚠️ Confermi di voler eliminare l'allevatore '{denominazione_sociale}'?**")
+            if st.session_state[f"{key_prefix}_conferma_elimina"]:
+                st.warning(f"**⚠️ Confermi di voler eliminare l'allevatore '{denominazione_sociale}'?**")
                 col_conf, col_annulla = st.columns([1, 1])
                 with col_conf:
                     if st.button("✅ Conferma", key=f"{key_prefix}_conferma", use_container_width=True):
@@ -304,29 +478,28 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
                         cursor.execute("DELETE FROM allevatore WHERE id_allevatore = ?", (defaults["id_allevatore"],))
                         conn.commit()
                         st.session_state[f"{key_prefix}_conferma_elimina"] = False
-                        st.success("✅ Allevatore eliminato con successo!")
+                        st.toast("✅ Allevatore eliminato con successo!")
+                        time.sleep(1)
                         st.rerun()
                 with col_annulla:
                     if st.button("❌ Annulla", key=f"{key_prefix}_annulla", use_container_width=True):
                         st.session_state[f"{key_prefix}_conferma_elimina"] = False
                         st.rerun()
-    else:
-        # Per nuovo allevatore, il salvataggio è gestito nel form principale
-        pass
 
     # Ritorna i dati per il nuovo allevatore
     return {
         "denominazione_sociale": denominazione_sociale,
         "id_impianto_associato": id_impianto_associato,
         "tipo_conferimento": tipo_conferimento,
-        "frequenza_conferimento": frequenza_conferimento,
+        "frequenza_conferimento_let": frequenza_conferimento_let,
+        "frequenza_conferimento_liq": frequenza_conferimento_liq,
         "id_trasporto": id_trasporto,
         "distanza_impianto": distanza_impianto,
         "uba_letame": uba_letame,
         "uba_liquame": uba_liquame,
         "prod_letame": prod_letame,
         "prod_liquame": prod_liquame,
-        "deposito_max": deposito_max,
+        "pollina": pollina,
         "quota": quota,
         "portata": portata,
         "potenza": potenza,
@@ -334,21 +507,19 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
     }
 
 # ---------------------------------------------------------------------------------------- #
-# MAIN
+# MAIN CORRETTO
 # ---------------------------------------------------------------------------------------- #
 
 st.title("🐄 Allevatori")
-st.markdown("In questa pagina è possibile visualizzare e modificare i dati relativi agli allevatori, oltre che inserirne di nuovi.")
 
 # Configurazione del database
-DB_PATH = "../data.db"  # Modifica con il percorso corretto
-conn = sqlite3.connect(DB_PATH)
+conn = get_connection()
 cursor = conn.cursor()
 
 tab1, tab2 = st.tabs(["✏️ Visualizza e modifica", "➕ Nuovo Allevatore"])
 
 # ---------------------------------------------------------------------------------------- #
-# VISUALIZZA E GESTISCI ALLEVATORI ESISTENTI
+# VISUALIZZA E GESTISCI ALLEVATORI ESISTENTI - MODIFICATO
 # ---------------------------------------------------------------------------------------- #
 
 with tab1:
@@ -371,7 +542,7 @@ with tab1:
             impianto_sel_id = id_imp
             break
 
-    # Query al database
+    # Query al database per ottenere gli allevatori
     if impianto_sel_id is not None:
         query = """
             SELECT a.*, i.nome as nome_impianto, t.tipo as tipo_trasporto
@@ -391,21 +562,33 @@ with tab1:
             ORDER BY a.denominazione_sociale
         """
         allevatori_df = pd.read_sql_query(query, conn)
+
+    if len(allevatori_df) == 0:
+        st.info("📭 Nessun allevatore trovato nel database.")
+    else:
+        # Seleziona l'allevatore da visualizzare/modificare
+        allevatori_options = [f"{row['id_allevatore']} - {row['denominazione_sociale']}" for _, row in allevatori_df.iterrows()]
         
-        # Visualizza schede allevatori
-        for i, row in allevatori_df.iterrows():
-            expander_title = f"🐄 {row['denominazione_sociale']}"
-            with st.expander(expander_title):
-                dati = row.to_dict()
-                form_allevatore(conn, dati_esistenti=dati, key_prefix=f"allev_{i}")
+        selected_allevatore = st.selectbox(
+            "Seleziona l'allevatore da visualizzare/modificare",
+            allevatori_options,
+            key="select_allevatore"
+        )
+        
+        # Trova i dati dell'allevatore selezionato
+        selected_id = int(selected_allevatore.split(" - ")[0])
+        selected_data = allevatori_df[allevatori_df['id_allevatore'] == selected_id].iloc[0].to_dict()
+        
+        # Mostra il form per l'allevatore selezionato
+        st.markdown("---")
+        form_allevatore(conn, dati_esistenti=selected_data, key_prefix="selected")
 
 # ---------------------------------------------------------------------------------------- #
-# AGGIUNGI NUOVO ALLEVATORE
+# AGGIUNGI NUOVO ALLEVATORE - MIGLIORATO
 # ---------------------------------------------------------------------------------------- #
 
 with tab2:
-    st.subheader("Inserisci Nuovo Allevatore")
-    
+
     # Inizializza session_state per il nuovo allevatore con valori di default
     if 'nuovo_allevatore' not in st.session_state:
         st.session_state.nuovo_allevatore = {
@@ -415,9 +598,10 @@ with tab2:
             "uba_liquame": 0,
             "prod_letame": 16.0,
             "prod_liquame": 22.0,
-            "deposito_max": 0.0,
-            "tipo_conferimento": "mezzi",
-            "frequenza_conferimento": 1,
+            "pollina": 0.0, 
+            "tipo_conferimento": "Mezzi",
+            "frequenza_conferimento_let": 30,
+            "frequenza_conferimento_liq": 30,
             "distanza_impianto": 0.0,
             "portata": 0.0,
             "potenza": 0.0,
@@ -425,121 +609,103 @@ with tab2:
         }
     
     # Usa il form_allevatore per raccogliere i dati
-    with st.form(key="nuovo_allevatore_form"):
-        dati_nuovo = form_allevatore(conn, dati_esistenti=st.session_state.nuovo_allevatore, key_prefix="nuovo")
+    dati_nuovo = form_allevatore(conn, dati_esistenti=st.session_state.nuovo_allevatore, key_prefix="nuovo")
+    
+    # Pulsante submit separato dal form
+    submitted = st.button("💾 Salva Nuovo Allevatore", use_container_width=True)
+    
+    if submitted:
+        # Validazione
+        errori = []
         
-        # Pulsante submit
-        submitted = st.form_submit_button("💾 Salva Nuovo Allevatore", use_container_width=True)
+        if not dati_nuovo["denominazione_sociale"]:
+            errori.append("❌ La denominazione sociale è obbligatoria.")
         
-        if submitted:
-            # Validazione
-            errori = []
-            
-            if not dati_nuovo["denominazione_sociale"]:
-                errori.append("❌ La denominazione sociale è obbligatoria.")
-            
-            if dati_nuovo["uba_letame"] == 0 and dati_nuovo["uba_liquame"] == 0:
-                errori.append("❌ Inserire almeno UBA Letame o UBA Liquame.")
-            
-            if dati_nuovo["prod_letame"] == 0 and dati_nuovo["prod_liquame"] == 0:
-                errori.append("❌ Inserire almeno la produzione di letame o liquame.")
-            
-            if dati_nuovo["deposito_max"] == 0:
-                errori.append("❌ La capacità del deposito è obbligatoria.")
-            
-            if dati_nuovo["tipo_conferimento"] == "tubazione":
-                if dati_nuovo["portata"] == 0 or dati_nuovo["potenza"] == 0 or dati_nuovo["ore"] == 0:
-                    errori.append("❌ Per il conferimento in tubazione, portata, potenza e ore sono obbligatorie.")
-            else:
-                # Per conferimento con mezzi, valida frequenza e distanza
-                if dati_nuovo["frequenza_conferimento"] == 0:
-                    errori.append("❌ La frequenza di conferimento è obbligatoria per il conferimento con mezzi.")
-                if dati_nuovo["distanza_impianto"] == 0:
-                    errori.append("❌ La distanza dall'impianto è obbligatoria per il conferimento con mezzi.")
-            
-            # Controlla se esiste già un allevatore con lo stesso nome
-            cursor.execute("SELECT COUNT(*) FROM allevatore WHERE denominazione_sociale = ?", 
-                         (dati_nuovo["denominazione_sociale"],))
-            if cursor.fetchone()[0] > 0:
-                errori.append("❌ Esiste già un allevatore con questa denominazione sociale.")
-            
-            if errori:
-                for errore in errori:
-                    st.error(errore)
-            else:
-                try:
-                    # Validazione con la classe Allevatore
-                    nuovo_allevatore = Allevatore(
-                        id_allevatore=0,  # Temporaneo, sarà auto-increment dal DB
-                        denominazione_sociale=dati_nuovo["denominazione_sociale"],
-                        id_impianto_associato=dati_nuovo["id_impianto_associato"],
-                        tipo_conferimento=dati_nuovo["tipo_conferimento"],
-                        frequenza_conferimento=dati_nuovo["frequenza_conferimento"],
-                        id_trasporto=dati_nuovo["id_trasporto"],
-                        distanza_impianto=dati_nuovo["distanza_impianto"],
-                        uba_letame=dati_nuovo["uba_letame"],
-                        uba_liquame=dati_nuovo["uba_liquame"],
-                        prod_letame=dati_nuovo["prod_letame"],
-                        prod_liquame=dati_nuovo["prod_liquame"],
-                        deposito_max=dati_nuovo["deposito_max"],
-                        quota=dati_nuovo["quota"],
-                        portata=dati_nuovo["portata"],
-                        potenza=dati_nuovo["potenza"],
-                        ore=dati_nuovo["ore"]
-                    )
-                    
-                    # Inserimento nel database
-                    cursor.execute("""
-                        INSERT INTO allevatore (
-                            denominazione_sociale, id_impianto_associato, tipo_conferimento,
-                            frequenza_conferimento, id_trasporto, distanza_impianto,
-                            uba_letame, uba_liquame, prod_letame, prod_liquame,
-                            deposito_max, quota, portata, potenza, ore
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        dati_nuovo["denominazione_sociale"], 
-                        dati_nuovo["id_impianto_associato"], 
-                        dati_nuovo["tipo_conferimento"],
-                        dati_nuovo["frequenza_conferimento"], 
-                        dati_nuovo["id_trasporto"], 
-                        dati_nuovo["distanza_impianto"],
-                        dati_nuovo["uba_letame"], 
-                        dati_nuovo["uba_liquame"], 
-                        dati_nuovo["prod_letame"], 
-                        dati_nuovo["prod_liquame"],
-                        dati_nuovo["deposito_max"], 
-                        dati_nuovo["quota"], 
-                        dati_nuovo["portata"], 
-                        dati_nuovo["potenza"], 
-                        dati_nuovo["ore"]
-                    ))
-                    
-                    conn.commit()
-                    st.success("✅ Allevatore creato con successo!")
-                    
-                    # Reset del form con valori di default
-                    st.session_state.nuovo_allevatore = {
-                        "denominazione_sociale": "",
-                        "quota": 0,
-                        "uba_letame": 0,
-                        "uba_liquame": 0,
-                        "prod_letame": 16.0,
-                        "prod_liquame": 22.0,
-                        "deposito_max": 0.0,
-                        "tipo_conferimento": "mezzi",
-                        "frequenza_conferimento": 0,
-                        "distanza_impianto": 0.0,
-                        "portata": 0.0,
-                        "potenza": 0.0,
-                        "ore": 0
-                    }
-                    st.rerun()
-                    
-                except ValueError as e:
-                    st.error(f"❌ Errore di validazione: {str(e)}")
-                except sqlite3.IntegrityError as e:
-                    st.error(f"❌ Errore di integrità del database: {str(e)}")
-                except Exception as e:
-                    st.error(f"❌ Errore durante il salvataggio: {str(e)}")
+        # Validazione condizionale in base al tipo di conferimento
+        if dati_nuovo["tipo_conferimento"] == "Tubazione":
+            # Per tubazione, controlla solo liquame (pollina è esclusa)
+            if dati_nuovo["uba_liquame"] == 0:
+                errori.append("❌ Per il conferimento in tubazione, inserire almeno UBA Liquame.")
+            if dati_nuovo["prod_liquame"] == 0:
+                errori.append("❌ Per il conferimento in tubazione, inserire almeno la produzione di liquame.")
+            if dati_nuovo["portata"] == 0 or dati_nuovo["potenza"] == 0 or dati_nuovo["ore"] == 0:
+                errori.append("❌ Per il conferimento in tubazione, portata, potenza e ore sono obbligatorie.")
+        else:
+            # Per mezzi, controlla entrambi + pollina
+            if dati_nuovo["uba_letame"] == 0 and dati_nuovo["uba_liquame"] == 0 and dati_nuovo["pollina"] == 0:
+                errori.append("❌ Inserire almeno UBA Letame, UBA Liquame o Pollina.")
+            if dati_nuovo["prod_letame"] == 0 and dati_nuovo["prod_liquame"] == 0 and dati_nuovo["pollina"] == 0:
+                errori.append("❌ Inserire almeno la produzione di letame, liquame o pollina.")
+        
+        # Controlla se esiste già un allevatore con lo stesso nome
+        cursor.execute("SELECT COUNT(*) FROM allevatore WHERE denominazione_sociale = ?", 
+                     (dati_nuovo["denominazione_sociale"],))
+        if cursor.fetchone()[0] > 0:
+            errori.append("❌ Esiste già un allevatore con questa denominazione sociale.")
+        
+        if errori:
+            for errore in errori:
+                st.error(errore)
+        else:
+            try:
+                # Validazione con la classe Allevatore
+                nuovo_allevatore = Allevatore(
+                    id_allevatore=0,  # Temporaneo, sarà auto-increment dal DB
+                    denominazione_sociale=dati_nuovo["denominazione_sociale"],
+                    id_impianto_associato=dati_nuovo["id_impianto_associato"],
+                    tipo_conferimento=dati_nuovo["tipo_conferimento"].lower(),
+                    frequenza_conferimento_let=dati_nuovo["frequenza_conferimento_let"],
+                    frequenza_conferimento_liq=dati_nuovo["frequenza_conferimento_liq"],
+                    id_trasporto=dati_nuovo["id_trasporto"],
+                    distanza_impianto=dati_nuovo["distanza_impianto"],
+                    uba_letame=dati_nuovo["uba_letame"],
+                    uba_liquame=dati_nuovo["uba_liquame"],
+                    prod_letame=dati_nuovo["prod_letame"],
+                    prod_liquame=dati_nuovo["prod_liquame"],
+                    pollina=dati_nuovo["pollina"],
+                    quota=dati_nuovo["quota"],
+                    portata=dati_nuovo["portata"],
+                    potenza=dati_nuovo["potenza"],
+                    ore=dati_nuovo["ore"]
+                )
+                
+                # Inserimento nel database
+                cursor.execute("""
+                    INSERT INTO allevatore (
+                        denominazione_sociale, id_impianto_associato, tipo_conferimento,
+                        frequenza_conferimento_letame, frequenza_conferimento_liquame, id_trasporto, distanza_impianto,
+                        uba_letame, uba_liquame, prod_letame, prod_liquame, pollina,
+                        quota, portata, potenza, ore
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    dati_nuovo["denominazione_sociale"], 
+                    dati_nuovo["id_impianto_associato"], 
+                    dati_nuovo["tipo_conferimento"].lower(),
+                    dati_nuovo["frequenza_conferimento_let"],
+                    dati_nuovo["frequenza_conferimento_liq"],
+                    dati_nuovo["id_trasporto"], 
+                    dati_nuovo["distanza_impianto"],
+                    dati_nuovo["uba_letame"], 
+                    dati_nuovo["uba_liquame"], 
+                    dati_nuovo["prod_letame"], 
+                    dati_nuovo["prod_liquame"],
+                    dati_nuovo["pollina"], 
+                    dati_nuovo["quota"], 
+                    dati_nuovo["portata"], 
+                    dati_nuovo["potenza"], 
+                    dati_nuovo["ore"]
+                ))
+                
+                conn.commit()
+                st.toast("✅ Allevatore creato con successo!")
+                time.sleep(1)
+                st.rerun()
+                
+            except ValueError as e:
+                st.error(f"❌ Errore di validazione: {str(e)}")
+            except sqlite3.IntegrityError as e:
+                st.error(f"❌ Errore di integrità del database: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Errore durante il salvataggio: {str(e)}")
 
 conn.close()
