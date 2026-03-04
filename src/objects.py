@@ -13,13 +13,14 @@ class Allevatore:
         tipo_conferimento: str,
         frequenza_conferimento_let: int,
         frequenza_conferimento_liq: int,
-        id_trasporto: int,
         distanza_impianto: float,
         uba_letame: int,
         uba_liquame: int,
         prod_letame: float,
         prod_liquame: float,
-        pollina: float, 
+        pollina: float,
+        sottoprodotti: float = 0,  # ton/anno
+        colture: float = 0,        # ton/anno
         quota: int = None,
         portata: float = None,
         potenza: float = None,
@@ -36,13 +37,14 @@ class Allevatore:
 
         self.frequenza_conferimento_let = frequenza_conferimento_let
         self.frequenza_conferimento_liq = frequenza_conferimento_liq
-        self.id_trasporto = id_trasporto
         self.distanza_impianto = distanza_impianto
         self.uba_letame = uba_letame
         self.uba_liquame = uba_liquame
-        self.prod_letame = prod_letame # mc/UBA/anno
-        self.prod_liquame = prod_liquame # mc/UBA/anno
+        self.prod_letame = prod_letame  # mc/UBA/anno
+        self.prod_liquame = prod_liquame  # mc/UBA/anno
         self.pollina = pollina  # ton/anno
+        self.sottoprodotti = sottoprodotti  # ton/anno
+        self.colture = colture  # ton/anno
         self.quota = quota
 
         if tipo_conferimento != 'tubazione':
@@ -70,7 +72,7 @@ class Allevatore:
             f"Allevatore id={self.id_allevatore}, nome={self.denominazione_sociale}, "
             f"tipo_conferimento={self.tipo_conferimento}, impianto_associato={self.id_impianto_associato}, "
             f"freq_conf_let={self.frequenza_conferimento_let}, freq_conf_liq={self.frequenza_conferimento_liq}, "
-            f"pollina={self.pollina}"
+            f"pollina={self.pollina}, sottoprodotti={self.sottoprodotti}, colture={self.colture}"
         )
 
     @classmethod
@@ -80,9 +82,9 @@ class Allevatore:
 
         cursor.execute("""
             SELECT id_allevatore, denominazione_sociale, id_impianto_associato,
-                   tipo_conferimento, frequenza_conferimento_letame, frequenza_conferimento_liquame, id_trasporto,
-                   distanza_impianto, uba_letame, uba_liquame, prod_letame, prod_liquame, pollina,
-                   quota, portata, potenza, ore
+                   tipo_conferimento, frequenza_conferimento_letame, frequenza_conferimento_liquame,
+                   distanza_impianto, uba_letame, uba_liquame, prod_letame, prod_liquame,
+                   pollina, sottoprodotti, colture, quota, portata, potenza, ore
             FROM allevatore
             WHERE id_allevatore = ?
         """, (id_allevatore,))
@@ -108,7 +110,7 @@ class Impianto:
         # Strutture dati per informazioni aggiuntive
         self.ricetta = []           # lista di dict {tipo, quantita}
         self.energia = defaultdict(dict)  # {categoria: {tipo: valore}}
-        self.ricettori = []         # lista di dict {id_ricettore, id_trasporto, tipo, distanza}
+        self.ricettori = []         # lista di dict {id_ricettore, tipo, distanza}
 
     def __repr__(self):
         return f"Impianto id={self.id_impianto}, nome='{self.nome}'"
@@ -151,14 +153,13 @@ class Impianto:
 
         # --- Tabella ricettori ---
         cursor.execute("""
-            SELECT id_ricettore, id_trasporto, tipo, distanza
+            SELECT id_ricettore, tipo, distanza
             FROM ricettori
             WHERE id_impianto = ?
         """, (id_impianto,))
-        for id_ricettore, id_trasporto, tipo, distanza in cursor.fetchall():
+        for id_ricettore, tipo, distanza in cursor.fetchall():
             imp.ricettori.append({
                 'id_ricettore': id_ricettore,
-                'id_trasporto': id_trasporto,
                 'tipo': tipo,
                 'distanza': distanza
             })

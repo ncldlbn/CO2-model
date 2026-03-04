@@ -219,6 +219,16 @@ def co2eq_simplified(durata_deposito, m, alfa, beta, GWP_N2O = 265, GWP_CH4 = 28
 
 def co2_letame_semplificata(allevatore):
 
+    """
+    return
+
+    co2eq_evitata_anno: kg CO2 evitata (-)
+    n_svuotamenti: numero di volte che il deposito viene svuotato in un anno
+    deposito_let: quantità contenuta nel deposito al momento dello svuotamento
+    letame_tot_annuo: quantità di biomassa prodotta in un anno
+
+    """
+
     letame_tot_annuo = allevatore.prod_letame * allevatore.uba_letame # ton
     deposito_let = (allevatore.prod_letame * allevatore.uba_letame / 365) * allevatore.frequenza_conferimento_let # ton
     prod_letame_giorno = (allevatore.prod_letame / 365) * allevatore.uba_letame # ton/giorno
@@ -250,13 +260,20 @@ def co2_letame_semplificata(allevatore):
 
     # CO2 evitata
     co2eq_evitata_anno = (co2eq - co2eq_ref) * n_svuotamenti + (co2eq_res - co2eq_res_ref)
-
-    n2o = m * allevatore.frequenza_conferimento_liq # g per kg di solido totale
-    ch4 = alfa * allevatore.frequenza_conferimento_liq ** beta # g per kg di solido totale
     
     return co2eq_evitata_anno, n_svuotamenti, deposito_let, letame_tot_annuo
 
 def co2_liquame_semplificata(allevatore):
+
+    """
+    return
+
+    co2eq_evitata_anno: kg CO2 evitata (-)
+    n_svuotamenti: numero di volte che il deposito viene svuotato in un anno
+    deposito_liq: quantità contenuta nel deposito al momento dello svuotamento
+    liquame_tot_annuo: quantità di biomassa prodotta in un anno
+
+    """
 
     liquame_tot_annuo = allevatore.prod_liquame * allevatore.uba_liquame # ton
     deposito_liq = (allevatore.prod_liquame * allevatore.uba_liquame / 365) * allevatore.frequenza_conferimento_liq # ton
@@ -280,8 +297,8 @@ def co2_liquame_semplificata(allevatore):
     co2eq_res = co2eq_simplified(giorni_residui, m, alfa, beta)
     co2eq_res_ref = co2eq_simplified(180, m, alfa, beta)
 
-    co2eq_res = co2eq_res * ( ( prod_liquame_giorno * 1000 ) * giorni_residui) * liquame_st / 1000 # g/kg * (( ton/giorno * 1000 ) * giorni) * perc_sostanza_secca / 1000
-    co2eq_res_ref = co2eq_res_ref * ( ( prod_liquame_giorno * 1000 ) * giorni_residui) * liquame_st / 1000 # g/kg * (( ton/giorno * 1000 ) * giorni) * perc_sostanza_secca / 1000
+    co2eq_res = co2eq_res * ( ( prod_liquame_giorno * 1000 ) * giorni_residui) * liquame_st / 1000 # g/kg * (( ton/giorno * 1000 ) * giorni) * perc_sostanza_secca / 1000 --> kg CO2
+    co2eq_res_ref = co2eq_res_ref * ( ( prod_liquame_giorno * 1000 ) * giorni_residui) * liquame_st / 1000 # g/kg * (( ton/giorno * 1000 ) * giorni) * perc_sostanza_secca / 1000 --> kg CO2
 
     # CO2 evitata
     co2eq_evitata_anno = (co2eq - co2eq_ref) * n_svuotamenti + (co2eq_res - co2eq_res_ref)
@@ -292,27 +309,62 @@ def co2_liquame_semplificata(allevatore):
 # CO2eq NETTA POLLINA
 def co2eq_pollina(ton, ef):
     co2eq = ton * ef # ton x kgCO2/ton
-    componenti = componenti_co2("pollina", co2eq, db)
-
-    return componenti
+    return co2eq
 
 # CO2eq NETTA SOTTOPRODOTTI
 def co2eq_sottoprodotti():
     return 0
 
-# CO2eq DIGESTATO (ton Sostanza Secca)
-def co2eq_digestato(impianto, tot_let, tot_liq, EF, db_path):
-    # Stima sostanza secca
-    if impianto.separazione > 0:
-        digestato_sep = (tot_liq + tot_let) * 0.72 # ton
-        digestato = digestato_sep * 0.2
-        co2eq_dig = digestato * EF.digestato
-    else:
-        digestato = tot_liq * 0.95 # ton  
-        co2eq_dig = digestato * 0.052 * EF.digestato
+# CO2eq NETTA COLTURE
+def co2eq_colture(ton, ef):
+    co2eq = ton * ef # ton x kgCO2/ton
+    return co2eq
 
+
+# CO2eq DIGESTATO (ton Sostanza Secca)
+def co2eq_digestato(impianto, Q_in, EF, db_path):
+    
+    # ---- PARAMETRI MODELLO ----
+    perc_digestato = 0.95      # resa massa digestato
+    perc_liq_sep = 0.80        # quota liquida dopo separazione
+    perc_sol_sep = 0.20        # quota solida dopo separazione
+    ss_digestato = 0.052    # 5.2% sostanza secca
+    ss_solido = 0.20        # 20% sostanza secca frazione solida
+    
+    # ---- DIGESTATO TOTALE PRODOTTO ----
+    Q_digestato_tot = Q_in * perc_digestato
+    
+    if impianto.separazione > 0:
+        
+        # quota inviata a separazione (es. 0.5)
+        perc_sep = impianto.separazione
+        
+        Q_sep = Q_digestato_tot * perc_sep
+        Q_non_sep = Q_digestato_tot * (1 - perc_sep)
+        
+        # prodotti della separazione
+        Q_liq_sep = Q_sep * perc_liq_sep
+        Q_sol_sep = Q_sep * perc_sol_sep
+        
+        # digestato liquido totale = liquido separato + non separato
+        digestato_liq = Q_liq_sep + Q_non_sep
+        digestato_sol = Q_sol_sep
+        
+        # CO2eq calcolata su tonnellate di sostanza secca
+        SS_tot = (digestato_liq * ss_digestato) + (digestato_sol * ss_solido)
+        co2eq_dig = SS_tot * EF.digestato
+    
+    else:
+        # nessuna separazione
+        digestato_sol = 0
+        digestato_liq = Q_digestato_tot
+        
+        SS_tot = digestato_liq * ss_digestato
+        co2eq_dig = SS_tot * EF.digestato
+    
     componenti = componenti_co2("digestato", co2eq_dig, db_path)
-    return digestato, componenti
+    
+    return digestato_sol, digestato_liq, componenti
 
 # ============================================================================
 # CO2eq da bilancio energetico impianto
@@ -388,37 +440,60 @@ def co2eq_lng_acq(impianto, EF, db):
 # ============================================================================
 
 # CO2eq TRASPORTO (VALIDO PER BIOMASSA, DIGESTATO, BIOLNG, ECC...)
-def co2eq_trasporto(trasporto, ton_carico, mc_carico, distanza):
+def co2eq_trasporto(trasporto, ton_carico, densita_carico, distanza):
+
+    """
+    return
+
+    co2eq_trasporto: kg CO2 emessa per il trasporto (+)
+    n_viaggi: numero viaggi necessari per fare uno svuotamento completo del deposito
+
+    """
+
+    mc_carico = ton_carico / densita_carico
 
     n_viaggi_pieno_carico = floor(mc_carico / trasporto.capacita_max)
-    n_viaggi = n_viaggi_pieno_carico + 1
+    n_viaggi = n_viaggi_pieno_carico + 1 # viaggi solo andata da allevatore a impianto
 
-    densita_media = ton_carico / mc_carico if mc_carico > 0 else 0
-    massa_pieno_carico = trasporto.capacita_max * densita_media # ton
+    massa_pieno_carico = trasporto.capacita_max * densita_carico # ton
     massa_viaggio_carico_parziale = ton_carico - (n_viaggi_pieno_carico * massa_pieno_carico)
 
     co2eq_trasporto = trasporto.EF * distanza * (n_viaggi_pieno_carico * massa_pieno_carico + 1 * massa_viaggio_carico_parziale)
 
-    componenti_co2eq = (trasporto.tipo, co2eq_trasporto)
-
-    return componenti_co2eq, n_viaggi
+    return co2eq_trasporto, n_viaggi
 
 # ============================================================================
 # CO2eq per funzionamento impianto
 # ============================================================================
 def co2eq_impianto(impianto, EF, db):
-
+    """
+    Calcola le componenti di CO2 per rifiuti, olio lubrificante, acqua e scarichi.
+    Restituisce un DataFrame con una riga per ciascuna voce e le colonne:
+    nome, co2_fossile, co2_biogenica, co2_dluc, co2_tot.
+    """
+    # Calcolo dei totali di CO2 per ogni tipologia
     CO2_tot_rifiuti = impianto.rifiuti * EF.rifiuti_recupero
     CO2_tot_olio = impianto.olio_lubrificante * EF.olio_lubrificante
     CO2_tot_acqua = impianto.acqua * EF.acqua
     CO2_tot_scarichi = impianto.scarichi * EF.scarichi
 
-    comp_CO2_tot_rifiuti = componenti_co2("rifiuti_recupero", CO2_tot_rifiuti, db)
-    comp_CO2_tot_olio = componenti_co2("olio_lubrificante", CO2_tot_olio, db)
-    comp_CO2_tot_acqua = componenti_co2("acqua", CO2_tot_acqua, db)
-    comp_CO2_tot_scarichi = componenti_co2("scarichi", CO2_tot_scarichi, db)
+    # Ottenimento delle componenti
+    comp_rifiuti = componenti_co2("rifiuti_recupero", CO2_tot_rifiuti, db)
+    comp_olio = componenti_co2("olio_lubrificante", CO2_tot_olio, db)
+    comp_acqua = componenti_co2("acqua", CO2_tot_acqua, db)
+    comp_scarichi = componenti_co2("scarichi", CO2_tot_scarichi, db)
 
-    return comp_CO2_tot_olio, comp_CO2_tot_rifiuti, comp_CO2_tot_acqua, comp_CO2_tot_scarichi
+    # Creazione del DataFrame
+    df = pd.DataFrame([
+        {'nome': 'Rifiuti', **comp_rifiuti.to_dict()},
+        {'nome': 'Olio lubrificante', **comp_olio.to_dict()},
+        {'nome': 'Acqua', **comp_acqua.to_dict()},
+        {'nome': 'Scarichi', **comp_scarichi.to_dict()}
+    ])
+
+    # Riordino colonne
+    df = df[['nome', 'co2_fossile', 'co2_biogenica', 'co2_dluc', 'co2_tot']]
+    return df
 
 # ============================================================================
 # CALCOLO COMPONENTI EMISSIONI CO2

@@ -32,14 +32,13 @@ CREATE TABLE allevatore (
 CREATE TABLE trasporti (
     id_trasporto INTEGER PRIMARY KEY AUTOINCREMENT,
     tipo TEXT NOT NULL,
-    EF REAL NOT NULL,
     capacita_max REAL
 );
 
-INSERT INTO trasporti (id_trasporto, tipo, EF, capacita_max) VALUES
-(0, 'tubazione', 0, NULL),
-(1, 'camion_generico', 0.1487, 25),
-(2, 'trattore', 0.3855, NULL);
+INSERT INTO trasporti (id_trasporto, tipo, capacita_max) VALUES
+(0, 'tubazione', NULL),
+(1, 'camion_generico', 25),
+(2, 'trattore', NULL);
 
 -- =====================================
 -- TABELLA FATTORI EMISSIONE
@@ -135,7 +134,7 @@ CREATE TABLE bilancio_energetico (
 );
 
 -- =====================================
--- TABELLA RICETTORI
+-- TABELLE RICETTORI
 -- =====================================
 CREATE TABLE ricettori (
     id_ricettore INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,3 +145,17 @@ CREATE TABLE ricettori (
     FOREIGN KEY(id_impianto) REFERENCES impianto(id_impianto),
     FOREIGN KEY(id_trasporto) REFERENCES trasporti(id_trasporto)
 );
+
+-- =====================================
+-- TABELLE CONFERITORI
+-- =====================================
+CREATE TABLE conferitori (
+    id_conferitore INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_impianto INTEGER NOT NULL,
+    id_trasporto INTEGER NOT NULL,
+    tipo TEXT, -- digestato solido / liquido, bioLNG, bioCO2
+    distanza REAL NOT NULL, -- km
+    FOREIGN KEY(id_impianto) REFERENCES impianto(id_impianto),
+    FOREIGN KEY(id_trasporto) REFERENCES trasporti(id_trasporto)
+);
+
