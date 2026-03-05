@@ -233,9 +233,11 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
     st.markdown("---")
     st.subheader("Altri conferitori")
 
-    # Recupera i conferitori esistenti
-    conferitori_esistenti = []
-    if defaults["id_impianto"]:
+    if not defaults["id_impianto"]:
+        st.info("ℹ️ Sarà possibile aggiungere conferitori e ricettori solo dopo aver creato l'impianto.")
+    else:
+        # Recupera i conferitori esistenti
+        conferitori_esistenti = []
         cursor.execute("""
             SELECT c.id_conferitore, c.tipo, c.distanza, c.carico, c.nome_conferitore
             FROM conferitori c
@@ -244,142 +246,141 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
         """, (defaults["id_impianto"],))
         conferitori_esistenti = cursor.fetchall()
 
-    # Dizionario per memorizzare i valori aggiornati dei conferitori
-    conferitori_aggiornati = {}
+        # Dizionario per memorizzare i valori aggiornati dei conferitori
+        conferitori_aggiornati = {}
 
-    # Mostra i conferitori esistenti
-    if conferitori_esistenti:
-        for i, conferitore in enumerate(conferitori_esistenti):
-            id_conferitore, tipo, distanza, carico, nome_conferitore = conferitore
-            
-            # Crea una card per ogni conferitore
-            col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
+        # Mostra i conferitori esistenti
+        if conferitori_esistenti:
+            for i, conferitore in enumerate(conferitori_esistenti):
+                id_conferitore, tipo, distanza, carico, nome_conferitore = conferitore
+                
+                col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
+                
+                with col1:
+                    nome_conferitore_val = st.text_input(
+                        "Nome conferitore",
+                        value=nome_conferitore or f"Conferitore {i+1}",
+                        key=f"{key_prefix}_conf_{id_conferitore}_nome"
+                    )
+                
+                with col2:
+                    tipo_selected = st.selectbox(
+                        "Tipo",
+                        ["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"],
+                        index=["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"].index(tipo) if tipo in ["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"] else 0,
+                        key=f"{key_prefix}_conf_{id_conferitore}_tipo"
+                    )
+                
+                with col3:
+                    nuova_distanza = st.number_input(
+                        "Distanza (km)",
+                        value=float(distanza),
+                        min_value=0.0,
+                        step=0.1,
+                        key=f"{key_prefix}_conf_{id_conferitore}_distanza"
+                    )
+                
+                with col4:
+                    nuovo_carico = st.number_input(
+                        "Carico (ton)",
+                        value=int(carico),
+                        min_value=0,
+                        step=1,
+                        key=f"{key_prefix}_conf_{id_conferitore}_carico"
+                    )
+                
+                with col5:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🗑️", key=f"{key_prefix}_conf_{id_conferitore}_elimina"):
+                        cursor.execute("DELETE FROM conferitori WHERE id_conferitore = ?", (id_conferitore,))
+                        conn.commit()
+                        st.toast("Conferitore eliminato")
+                        time.sleep(1)
+                        st.rerun()
+                
+                conferitori_aggiornati[id_conferitore] = {
+                    "nome_conferitore": nome_conferitore_val,
+                    "tipo": tipo_selected,
+                    "distanza": nuova_distanza,
+                    "carico": nuovo_carico
+                }
+
+        # Inizializza session state per il nuovo conferitore
+        if f"{key_prefix}_nuovo_conferitore_attivo" not in st.session_state:
+            st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = False
+
+        if not st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"]:
+            if st.button("➕ Aggiungi nuovo conferitore", key=f"{key_prefix}_btn_nuovo_conferitore"):
+                st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = True
+                st.rerun()
+        else:
+            st.markdown("**Nuovo conferitore:**")
+            col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
             
             with col1:
-                nome_conferitore_val = st.text_input(
+                nuovo_nome_conferitore = st.text_input(
                     "Nome conferitore",
-                    value=nome_conferitore or f"Conferitore {i+1}",
-                    key=f"{key_prefix}_conf_{id_conferitore}_nome"
+                    value="",
+                    key=f"{key_prefix}_nuovo_nome_conferitore"
                 )
             
             with col2:
-                tipo_selected = st.selectbox(
+                nuovo_tipo = st.selectbox(
                     "Tipo",
                     ["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"],
-                    index=["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"].index(tipo) if tipo in ["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"] else 0,
-                    key=f"{key_prefix}_conf_{id_conferitore}_tipo"
+                    key=f"{key_prefix}_nuovo_tipo_conferitore"
                 )
             
             with col3:
                 nuova_distanza = st.number_input(
                     "Distanza (km)",
-                    value=float(distanza),
                     min_value=0.0,
                     step=0.1,
-                    key=f"{key_prefix}_conf_{id_conferitore}_distanza"
+                    value=0.0,
+                    key=f"{key_prefix}_nuova_distanza_conferitore"
                 )
             
             with col4:
                 nuovo_carico = st.number_input(
                     "Carico (ton)",
-                    value=int(carico),
                     min_value=0,
                     step=1,
-                    key=f"{key_prefix}_conf_{id_conferitore}_carico"
+                    value=0,
+                    key=f"{key_prefix}_nuovo_carico_conferitore"
                 )
             
             with col5:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️", key=f"{key_prefix}_conf_{id_conferitore}_elimina"):
-                    cursor.execute("DELETE FROM conferitori WHERE id_conferitore = ?", (id_conferitore,))
-                    conn.commit()
-                    st.toast("Conferitore eliminato")
-                    time.sleep(1)
-                    st.rerun()
-            
-            # Memorizza i valori aggiornati per il salvataggio
-            conferitori_aggiornati[id_conferitore] = {
-                "nome_conferitore": nome_conferitore_val,
-                "tipo": tipo_selected,
-                "distanza": nuova_distanza,
-                "carico": nuovo_carico
-            }
-
-    # Inizializza session state per il nuovo conferitore
-    if f"{key_prefix}_nuovo_conferitore_attivo" not in st.session_state:
-        st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = False
-
-    # Pulsante per mostrare/nascondere i campi del nuovo conferitore
-    if not st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"]:
-        if st.button("➕ Aggiungi nuovo conferitore", key=f"{key_prefix}_btn_nuovo_conferitore"):
-            st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = True
-            st.rerun()
-    else:
-        # Mostra i campi per il nuovo conferitore
-        st.markdown("**Nuovo conferitore:**")
-        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
-        
-        with col1:
-            nuovo_nome_conferitore = st.text_input(
-                "Nome conferitore",
-                value="",
-                key=f"{key_prefix}_nuovo_nome_conferitore"
-            )
-        
-        with col2:
-            nuovo_tipo = st.selectbox(
-                "Tipo",
-                ["Liquame", "Letame", "Pollina", "Sottoprodotti", "Colture"],
-                key=f"{key_prefix}_nuovo_tipo_conferitore"
-            )
-        
-        with col3:
-            nuova_distanza = st.number_input(
-                "Distanza (km)",
-                min_value=0.0,
-                step=0.1,
-                value=0.0,
-                key=f"{key_prefix}_nuova_distanza_conferitore"
-            )
-        
-        with col4:
-            nuovo_carico = st.number_input(
-                "Carico (ton)",
-                min_value=0,
-                step=1,
-                value=0,
-                key=f"{key_prefix}_nuovo_carico_conferitore"
-            )
-        
-        with col5:
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_salva, col_annulla = st.columns(2)
-            with col_salva:
-                if st.button("💾 Salva", key=f"{key_prefix}_salva_nuovo_conferitore"):
-                    if nuovo_nome_conferitore:
-                        cursor.execute("""
-                            INSERT INTO conferitori (id_impianto, nome_conferitore, tipo, distanza, carico)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (defaults["id_impianto"], nuovo_nome_conferitore, nuovo_tipo, nuova_distanza, nuovo_carico))
-                        conn.commit()
-                        st.toast("Conferitore aggiunto")
+                col_salva, col_annulla = st.columns(2)
+                with col_salva:
+                    if st.button("💾 Salva", key=f"{key_prefix}_salva_nuovo_conferitore"):
+                        if nuovo_nome_conferitore:
+                            cursor.execute("""
+                                INSERT INTO conferitori (id_impianto, nome_conferitore, tipo, distanza, carico)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (defaults["id_impianto"], nuovo_nome_conferitore, nuovo_tipo, nuova_distanza, nuovo_carico))
+                            conn.commit()
+                            st.toast("Conferitore aggiunto")
+                            st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = False
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Il nome del conferitore è obbligatorio")
+                
+                with col_annulla:
+                    if st.button("❌ Annulla", key=f"{key_prefix}_annulla_nuovo_conferitore"):
                         st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = False
-                        time.sleep(1)
                         st.rerun()
-                    else:
-                        st.error("Il nome del conferitore è obbligatorio")
-            
-            with col_annulla:
-                if st.button("❌ Annulla", key=f"{key_prefix}_annulla_nuovo_conferitore"):
-                    st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = False
-                    st.rerun()
 
     # SEZIONE RICETTORI
+    st.markdown("---")
     st.subheader("Altri ricettori")
 
-    # Recupera i ricettori esistenti
-    ricettori_esistenti = []
-    if defaults["id_impianto"]:
+    if not defaults["id_impianto"]:
+        st.info("ℹ️ Sarà possibile aggiungere conferitori e ricettori solo dopo aver creato l'impianto.")
+    else:
+        # Recupera i ricettori esistenti
+        ricettori_esistenti = []
         cursor.execute("""
             SELECT r.id_ricettore, r.tipo, r.distanza, r.carico, r.nome_ricettore
             FROM ricettori r
@@ -388,147 +389,138 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
         """, (defaults["id_impianto"],))
         ricettori_esistenti = cursor.fetchall()
 
-    # Dizionario per memorizzare i valori aggiornati dei ricettori
-    ricettori_aggiornati = {}
+        # Dizionario per memorizzare i valori aggiornati dei ricettori
+        ricettori_aggiornati = {}
 
-    # Mostra i ricettori esistenti
-    if ricettori_esistenti:
-        for i, ricettore in enumerate(ricettori_esistenti):
-            id_ricettore, tipo, distanza, carico, nome_ricettore = ricettore
-            
-            # Crea una card per ogni ricettore
-            col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
+        if ricettori_esistenti:
+            for i, ricettore in enumerate(ricettori_esistenti):
+                id_ricettore, tipo, distanza, carico, nome_ricettore = ricettore
+                
+                col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
+                
+                with col1:
+                    nome_ricettore_val = st.text_input(
+                        "Nome ricettore",
+                        value=nome_ricettore or f"Ricettore {i+1}",
+                        key=f"{key_prefix}_ric_{id_ricettore}_nome"
+                    )
+                
+                with col2:
+                    tipo_selected = st.selectbox(
+                        "Tipo",
+                        ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"],
+                        index=["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"].index(tipo) if tipo in ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"] else 0,
+                        key=f"{key_prefix}_ric_{id_ricettore}_tipo"
+                    )
+                
+                with col3:
+                    nuova_distanza = st.number_input(
+                        "Distanza (km)",
+                        value=float(distanza),
+                        min_value=0.0,
+                        step=0.1,
+                        key=f"{key_prefix}_ric_{id_ricettore}_distanza"
+                    )
+                
+                with col4:
+                    nuovo_carico = st.number_input(
+                        "Carico (ton)",
+                        value=int(carico),
+                        min_value=0,
+                        step=1,
+                        key=f"{key_prefix}_ric_{id_ricettore}_carico"
+                    )
+                
+                with col5:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🗑️", key=f"{key_prefix}_ric_{id_ricettore}_elimina"):
+                        cursor.execute("DELETE FROM ricettori WHERE id_ricettore = ?", (id_ricettore,))
+                        conn.commit()
+                        st.toast("Ricettore eliminato")
+                        time.sleep(1)
+                        st.rerun()
+                
+                ricettori_aggiornati[id_ricettore] = {
+                    "nome_ricettore": nome_ricettore_val,
+                    "tipo": tipo_selected,
+                    "distanza": nuova_distanza,
+                    "carico": nuovo_carico
+                }
+
+        if f"{key_prefix}_nuovo_ricettore_attivo" not in st.session_state:
+            st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = False
+
+        if not st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"]:
+            if st.button("➕ Aggiungi nuovo ricettore", key=f"{key_prefix}_btn_nuovo_ricettore"):
+                st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = True
+                st.rerun()
+        else:
+            st.markdown("**Nuovo ricettore:**")
+            col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
             
             with col1:
-                nome_ricettore_val = st.text_input(
+                nuovo_nome_ricettore = st.text_input(
                     "Nome ricettore",
-                    value=nome_ricettore or f"Ricettore {i+1}",
-                    key=f"{key_prefix}_ric_{id_ricettore}_nome"
+                    value="",
+                    key=f"{key_prefix}_nuovo_nome_ricettore"
                 )
             
             with col2:
-                tipo_selected = st.selectbox(
+                nuovo_tipo = st.selectbox(
                     "Tipo",
                     ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"],
-                    index=["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"].index(tipo) if tipo in ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"] else 0,
-                    key=f"{key_prefix}_ric_{id_ricettore}_tipo"
+                    key=f"{key_prefix}_nuovo_tipo_ricettore"
                 )
             
             with col3:
                 nuova_distanza = st.number_input(
                     "Distanza (km)",
-                    value=float(distanza),
                     min_value=0.0,
                     step=0.1,
-                    key=f"{key_prefix}_ric_{id_ricettore}_distanza"
+                    value=0.0,
+                    key=f"{key_prefix}_nuova_distanza_ricettore"
                 )
             
             with col4:
                 nuovo_carico = st.number_input(
                     "Carico (ton)",
-                    value=int(carico),
                     min_value=0,
                     step=1,
-                    key=f"{key_prefix}_ric_{id_ricettore}_carico"
+                    value=0,
+                    key=f"{key_prefix}_nuovo_carico_ricettore"
                 )
             
             with col5:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️", key=f"{key_prefix}_ric_{id_ricettore}_elimina"):
-                    cursor.execute("DELETE FROM ricettori WHERE id_ricettore = ?", (id_ricettore,))
-                    conn.commit()
-                    st.toast("Ricettore eliminato")
-                    time.sleep(1)
-                    st.rerun()
-            
-            # Memorizza i valori aggiornati per il salvataggio
-            ricettori_aggiornati[id_ricettore] = {
-                "nome_ricettore": nome_ricettore_val,
-                "tipo": tipo_selected,
-                "distanza": nuova_distanza,
-                "carico": nuovo_carico
-            }
-
-    # Inizializza session state per il nuovo ricettore
-    if f"{key_prefix}_nuovo_ricettore_attivo" not in st.session_state:
-        st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = False
-
-    # Pulsante per mostrare/nascondere i campi del nuovo ricettore
-    if not st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"]:
-        if st.button("➕ Aggiungi nuovo ricettore", key=f"{key_prefix}_btn_nuovo_ricettore"):
-            st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = True
-            st.rerun()
-    else:
-        # Mostra i campi per il nuovo ricettore
-        st.markdown("**Nuovo ricettore:**")
-        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
-        
-        with col1:
-            nuovo_nome_ricettore = st.text_input(
-                "Nome ricettore",
-                value="",
-                key=f"{key_prefix}_nuovo_nome_ricettore"
-            )
-        
-        with col2:
-            nuovo_tipo = st.selectbox(
-                "Tipo",
-                ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"],
-                key=f"{key_prefix}_nuovo_tipo_ricettore"
-            )
-        
-        with col3:
-            nuova_distanza = st.number_input(
-                "Distanza (km)",
-                min_value=0.0,
-                step=0.1,
-                value=0.0,
-                key=f"{key_prefix}_nuova_distanza_ricettore"
-            )
-        
-        with col4:
-            nuovo_carico = st.number_input(
-                "Carico (ton)",
-                min_value=0,
-                step=1,
-                value=0,
-                key=f"{key_prefix}_nuovo_carico_ricettore"
-            )
-        
-        with col5:
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_salva, col_annulla = st.columns(2)
-            with col_salva:
-                if st.button("💾 Salva", key=f"{key_prefix}_salva_nuovo_ricettore"):
-                    if nuovo_nome_ricettore:
-                        cursor.execute("""
-                            INSERT INTO ricettori (id_impianto, nome_ricettore, tipo, distanza, carico)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (defaults["id_impianto"], nuovo_nome_ricettore, nuovo_tipo, nuova_distanza, nuovo_carico))
-                        conn.commit()
-                        st.toast("Ricettore aggiunto")
+                col_salva, col_annulla = st.columns(2)
+                with col_salva:
+                    if st.button("💾 Salva", key=f"{key_prefix}_salva_nuovo_ricettore"):
+                        if nuovo_nome_ricettore:
+                            cursor.execute("""
+                                INSERT INTO ricettori (id_impianto, nome_ricettore, tipo, distanza, carico)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (defaults["id_impianto"], nuovo_nome_ricettore, nuovo_tipo, nuova_distanza, nuovo_carico))
+                            conn.commit()
+                            st.toast("Ricettore aggiunto")
+                            st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = False
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Il nome del ricettore è obbligatorio")
+                
+                with col_annulla:
+                    if st.button("❌ Annulla", key=f"{key_prefix}_annulla_nuovo_ricettore"):
                         st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = False
-                        time.sleep(1)
                         st.rerun()
-                    else:
-                        st.error("Il nome del ricettore è obbligatorio")
-            
-            with col_annulla:
-                if st.button("❌ Annulla", key=f"{key_prefix}_annulla_nuovo_ricettore"):
-                    st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = False
-                    st.rerun()
     
     st.markdown("---")
     col_update, col_delete = st.columns(2)
-    
-    # Solo per impianti esistenti mostra il pulsante "Salva modifiche"
     
     if defaults["id_impianto"]:
         with col_update:
             if st.button("💾 Salva modifiche", key=f"{key_prefix}_salva"):
                 cursor = conn.cursor()
                 
-                # Aggiorna i dati dell'impianto
                 cursor.execute(
                     """
                     UPDATE Impianto 
@@ -540,12 +532,9 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                      olio_lubrificante, rifiuti, acqua, scarichi, defaults["id_impianto"])
                 )
                 
-                # PRIMA: Elimina tutti i record esistenti del bilancio energetico per questo impianto
                 cursor.execute("DELETE FROM bilancio_energetico WHERE id_impianto = ?", (defaults["id_impianto"],))
                 
-                # POI: Inserisce i nuovi dati del bilancio energetico - TUTTI i valori, anche zero
                 for key, dati in nuovo_bilancio.items():
-                    # MODIFICA: Inserisce SEMPRE, anche se il valore è 0
                     cursor.execute(
                         """
                         INSERT INTO bilancio_energetico 
@@ -556,7 +545,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                          dati["valore"], dati["unita"])
                     )
                 
-                # Aggiorna i ricettori esistenti
                 for id_ricettore, dati_ricettore in ricettori_aggiornati.items():
                     cursor.execute("""
                         UPDATE ricettori 
@@ -570,7 +558,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                         id_ricettore
                     ))
                 
-                # Aggiunge il nuovo ricettore se presente
                 if (st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] and
                     nuovo_tipo is not None):
                     
@@ -596,11 +583,8 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                 with col_conf:
                     if st.button("✅ Conferma", key=f"{key_prefix}_conferma"):
                         cursor = conn.cursor()
-                        # Elimina prima i dati del bilancio energetico
                         cursor.execute("DELETE FROM bilancio_energetico WHERE id_impianto = ?", (defaults["id_impianto"],))
-                        # Elimina i ricettori
                         cursor.execute("DELETE FROM ricettori WHERE id_impianto = ?", (defaults["id_impianto"],))
-                        # Poi elimina l'impianto
                         cursor.execute("DELETE FROM Impianto WHERE id_impianto = ?", (defaults["id_impianto"],))
                         conn.commit()
                         st.session_state[f"{key_prefix}_conferma_elimina"] = False
@@ -620,12 +604,7 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
         "acqua": acqua,
         "scarichi": scarichi,
         "bilancio_energetico": nuovo_bilancio,
-        "nuovo_ricettore": {
-            "nome_ricettore": nuovo_nome_ricettore,
-            "tipo": nuovo_tipo,
-            "distanza": nuova_distanza,
-            "carico": nuovo_carico
-        } if st.session_state.get(f"{key_prefix}_nuovo_ricettore_attivo", False) else None
+        "nuovo_ricettore": None
     }
 
 # ---------------------------------------------------------------------------------------- #
@@ -640,7 +619,7 @@ cursor = conn.cursor()
 tab1, tab2 = st.tabs(["✏️ Visualizza e modifica", "➕ Nuovo"])
 
 # ---------------------------------------------------------------------------------------- #
-# VISUALIZZA E GESTISCI IMPIANTI ESISTENTI - MODIFICATO
+# VISUALIZZA E GESTISCI IMPIANTI ESISTENTI
 # ---------------------------------------------------------------------------------------- #
 with tab1:
     impianti = pd.read_sql_query("SELECT * FROM impianto", conn)
@@ -648,7 +627,6 @@ with tab1:
     if impianti.empty:
         st.info("Nessun impianto presente nel database.")
     else:
-        # Seleziona l'impianto da visualizzare/modificare
         impianti_options = [f"{row['id_impianto']} - {row['nome']}" for _, row in impianti.iterrows()]
         
         selected_impianto = st.selectbox(
@@ -657,20 +635,24 @@ with tab1:
             key="select_impianto"
         )
         
-        # Trova i dati dell'impianto selezionato
         selected_id = int(selected_impianto.split(" - ")[0])
         selected_data = impianti[impianti['id_impianto'] == selected_id].iloc[0].to_dict()
         
-        # Mostra il form per l'impianto selezionato
         st.markdown("---")
         form_impianto(conn, dati_esistenti=selected_data, key_prefix="selected")
 
 # ---------------------------------------------------------------------------------------- #
-# AGGIUNGI NUOVO IMPIANTO - FORM IDENTICO A QUELLO DI MODIFICA
+# AGGIUNGI NUOVO IMPIANTO
 # ---------------------------------------------------------------------------------------- #
 with tab2:
     
-    # Valori di default per nuovo impianto
+    # Contatore per forzare la ricreazione dei widget dopo il salvataggio
+    if "nuovo_impianto_form_counter" not in st.session_state:
+        st.session_state["nuovo_impianto_form_counter"] = 0
+
+    form_counter = st.session_state["nuovo_impianto_form_counter"]
+    key_prefix_nuovo = f"nuovo_impianto_{form_counter}"
+
     defaults = {
         "nome": "",
         "separazione": 0.00,
@@ -680,17 +662,14 @@ with tab2:
         "scarichi": 0.0
     }
     
-    # Usa la stessa funzione form_impianto ma per un nuovo impianto
-    dati_nuovo = form_impianto(conn, dati_esistenti=defaults, key_prefix="nuovo_impianto")
+    dati_nuovo = form_impianto(conn, dati_esistenti=defaults, key_prefix=key_prefix_nuovo)
     
-    # Pulsante per creare il nuovo impianto
     if st.button("💾 Crea Nuovo Impianto", key="crea_nuovo_impianto", use_container_width=True):
         if not dati_nuovo["nome"]:
             st.error("❌ Il campo Nome è obbligatorio.")
         else:
             try:
                 cursor = conn.cursor()
-                # Inserisce il nuovo impianto
                 cursor.execute(
                     """
                     INSERT INTO Impianto (
@@ -703,10 +682,8 @@ with tab2:
                      dati_nuovo["acqua"], dati_nuovo["scarichi"])
                 )
                 
-                # Ottiene l'ID dell'impianto appena creato
                 id_impianto = cursor.lastrowid
                 
-                # MODIFICA: Inserisce i dati del bilancio energetico - TUTTI i valori, anche zero
                 for key, dati in dati_nuovo.get("bilancio_energetico", {}).items():
                     cursor.execute(
                         """
@@ -718,22 +695,11 @@ with tab2:
                          dati["valore"], dati["unita"])
                     )
                 
-                # Aggiunge il nuovo ricettore se presente
-                if dati_nuovo.get("nuovo_ricettore") and dati_nuovo["nuovo_ricettore"]["tipo"] is not None:
-                    cursor.execute("""
-                        INSERT INTO ricettori (id_impianto, nome_ricettore, tipo, distanza, carico)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (
-                        id_impianto,
-                        dati_nuovo["nuovo_ricettore"]["nome_ricettore"],
-                        dati_nuovo["nuovo_ricettore"]["tipo"],
-                        dati_nuovo["nuovo_ricettore"]["distanza"],
-                        dati_nuovo["nuovo_ricettore"]["carico"]
-                    ))
-                
                 conn.commit()
                 st.toast(f"✅ Impianto '{dati_nuovo['nome']}' creato correttamente!")
                 time.sleep(1)
+                # Incrementa il contatore: Streamlit ricrea tutti i widget da zero
+                st.session_state["nuovo_impianto_form_counter"] += 1
                 st.rerun()
                 
             except sqlite3.IntegrityError:
