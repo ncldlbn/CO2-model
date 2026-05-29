@@ -53,6 +53,11 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
 
     if dati_esistenti:
         defaults.update(dati_esistenti)
+        # Map DB column names (full) to the short keys used internally
+        if "frequenza_conferimento_letame" in dati_esistenti:
+            defaults["frequenza_conferimento_let"] = int(dati_esistenti["frequenza_conferimento_letame"])
+        if "frequenza_conferimento_liquame" in dati_esistenti:
+            defaults["frequenza_conferimento_liq"] = int(dati_esistenti["frequenza_conferimento_liquame"])
 
     st.subheader("Anagrafica Allevatore")
     col1, col2 = st.columns(2)
@@ -495,7 +500,7 @@ with tab1:
         selected_data = allevatori_df[allevatori_df['id_allevatore'] == selected_id].iloc[0].to_dict()
         
         st.markdown("---")
-        form_allevatore(conn, dati_esistenti=selected_data, key_prefix="selected")
+        form_allevatore(conn, dati_esistenti=selected_data, key_prefix=f"selected_{selected_id}")
 
 with tab2:
 
