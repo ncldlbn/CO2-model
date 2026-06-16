@@ -1,8 +1,9 @@
-
 import sqlite3
 from collections import defaultdict
-from math import ceil, exp, log
-import pandas as pd
+from contextlib import closing
+
+import config
+
 
 class Allevatore:
     def __init__(
@@ -64,8 +65,8 @@ class Allevatore:
         self.deposito = {}
         self.tot_co2eq_let = 0
         self.tot_co2eq_liq = 0
-        self.GWP_CH4 = 28
-        self.GWP_N2O = 265
+        self.GWP_CH4 = config.GWP_CH4
+        self.GWP_N2O = config.GWP_N2O
 
     def __repr__(self):
         return (
@@ -77,20 +78,15 @@ class Allevatore:
 
     @classmethod
     def from_db(cls, db_path, id_allevatore):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT id_allevatore, denominazione_sociale, id_impianto_associato,
-                   tipo_conferimento, frequenza_conferimento_letame, frequenza_conferimento_liquame,
-                   distanza_impianto, uba_letame, uba_liquame, prod_letame, prod_liquame,
-                   pollina, sottoprodotti, colture, quota, portata, potenza, ore
-            FROM allevatore
-            WHERE id_allevatore = ?
-        """, (id_allevatore,))
-
-        row = cursor.fetchone()
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute("""
+                SELECT id_allevatore, denominazione_sociale, id_impianto_associato,
+                       tipo_conferimento, frequenza_conferimento_letame, frequenza_conferimento_liquame,
+                       distanza_impianto, uba_letame, uba_liquame, prod_letame, prod_liquame,
+                       pollina, sottoprodotti, colture, quota, portata, potenza, ore
+                FROM allevatore
+                WHERE id_allevatore = ?
+            """, (id_allevatore,)).fetchone()
 
         if not row:
             raise ValueError(f"Allevatore con id {id_allevatore} non trovato")
@@ -98,7 +94,8 @@ class Allevatore:
         return cls(*row)
 
 class Impianto:
-    def __init__(self, id_impianto, nome, separazione, olio_lubrificante, rifiuti, acqua, scarichi):
+    def __init__(self, id_impianto, nome, separazione, olio_lubrificante, rifiuti, acqua, scarichi,
+                 id_mezzo_liquido=config.ID_MEZZO_LIQUIDO_DEFAULT, id_mezzo_solido=config.ID_MEZZO_SOLIDO_DEFAULT):
         self.id_impianto = id_impianto
         self.nome = nome
         self.separazione = separazione
@@ -106,6 +103,8 @@ class Impianto:
         self.rifiuti = rifiuti
         self.acqua = acqua
         self.scarichi = scarichi
+        self.id_mezzo_liquido = id_mezzo_liquido  # default: Trattore
+        self.id_mezzo_solido = id_mezzo_solido    # default: Camion generico
 
         # Strutture dati per informazioni aggiuntive
         self.ricetta = []           # lista di dict {tipo, quantita}
@@ -117,54 +116,53 @@ class Impianto:
 
     @classmethod
     def from_db(cls, db_path, id_impianto):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        with closing(sqlite3.connect(db_path)) as conn:
+            cursor = conn.cursor()
 
-        # --- Tabella impianto ---
-        cursor.execute("""
-            SELECT id_impianto, nome, separazione, olio_lubrificante, rifiuti, acqua, scarichi
-            FROM impianto
-            WHERE id_impianto = ?
-        """, (id_impianto,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            raise ValueError(f"Impianto con id {id_impianto} non trovato")
+            # --- Tabella impianto ---
+            cursor.execute("""
+                SELECT id_impianto, nome, separazione, olio_lubrificante, rifiuti, acqua, scarichi,
+                       COALESCE(id_mezzo_liquido, ?), COALESCE(id_mezzo_solido, ?)
+                FROM impianto
+                WHERE id_impianto = ?
+            """, (config.ID_MEZZO_LIQUIDO_DEFAULT, config.ID_MEZZO_SOLIDO_DEFAULT, id_impianto))
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError(f"Impianto con id {id_impianto} non trovato")
 
-        imp = cls(*row)
+            imp = cls(*row)
 
-        # --- Tabella ricetta_impianto ---
-        cursor.execute("""
-            SELECT tipo, quantita
-            FROM ricetta_impianto
-            WHERE id_impianto = ?
-        """, (id_impianto,))
-        for tipo, quantita in cursor.fetchall():
-            imp.ricetta.append({'tipo': tipo, 'quantita': quantita})
+            # --- Tabella ricetta_impianto ---
+            cursor.execute("""
+                SELECT tipo, quantita
+                FROM ricetta_impianto
+                WHERE id_impianto = ?
+            """, (id_impianto,))
+            for tipo, quantita in cursor.fetchall():
+                imp.ricetta.append({'tipo': tipo, 'quantita': quantita})
 
-        # --- Tabella bilancio_energetico ---
-        cursor.execute("""
-            SELECT categoria, tipo, valore
-            FROM bilancio_energetico
-            WHERE id_impianto = ?
-        """, (id_impianto,))
-        for categoria, tipo, valore in cursor.fetchall():
-            imp.energia[categoria][tipo] = valore
+            # --- Tabella bilancio_energetico ---
+            cursor.execute("""
+                SELECT categoria, tipo, valore
+                FROM bilancio_energetico
+                WHERE id_impianto = ?
+            """, (id_impianto,))
+            for categoria, tipo, valore in cursor.fetchall():
+                imp.energia[categoria][tipo] = valore
 
-        # --- Tabella ricettori ---
-        cursor.execute("""
-            SELECT id_ricettore, tipo, distanza
-            FROM ricettori
-            WHERE id_impianto = ?
-        """, (id_impianto,))
-        for id_ricettore, tipo, distanza in cursor.fetchall():
-            imp.ricettori.append({
-                'id_ricettore': id_ricettore,
-                'tipo': tipo,
-                'distanza': distanza
-            })
+            # --- Tabella ricettori ---
+            cursor.execute("""
+                SELECT id_ricettore, tipo, distanza
+                FROM ricettori
+                WHERE id_impianto = ?
+            """, (id_impianto,))
+            for id_ricettore, tipo, distanza in cursor.fetchall():
+                imp.ricettori.append({
+                    'id_ricettore': id_ricettore,
+                    'tipo': tipo,
+                    'distanza': distanza
+                })
 
-        conn.close()
         return imp
 
 class Trasporto:
@@ -173,28 +171,21 @@ class Trasporto:
         id_trasporto: int,
         tipo: str,
         db_path: str,
-        capacita_max: float = None
     ):
         self.id_trasporto = id_trasporto
         self.tipo = tipo
         self.db_path = db_path
-        self.capacita_max = capacita_max
         self.tot_co2 = 0
         self.EF = self._assegna_ef_da_db()
 
     def _assegna_ef_da_db(self):
         """Recupera il fattore di emissione dalla tabella fattori_emissione"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT CO2_TOT 
-            FROM fattori_emissione 
-            WHERE categoria = 'trasporti' AND nome = ?
-        """, (self.tipo,))
-
-        row = cursor.fetchone()
-        conn.close()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute("""
+                SELECT CO2_TOT
+                FROM fattori_emissione
+                WHERE categoria = 'trasporti' AND nome = ?
+            """, (self.tipo,)).fetchone()
 
         if not row:
             raise ValueError(
@@ -204,34 +195,21 @@ class Trasporto:
         return row[0]
 
     def __repr__(self):
-        return (
-            f"Trasporto id={self.id_trasporto}, tipo={self.tipo}, EF={self.EF}, "
-            f"capacita_max={self.capacita_max}"
-        )
+        return f"Trasporto id={self.id_trasporto}, tipo={self.tipo}, EF={self.EF}"
 
     @classmethod
     def from_db(cls, db_path, id_trasporto):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT id_trasporto, tipo, capacita_max
-            FROM trasporti
-            WHERE id_trasporto = ?
-        """, (id_trasporto,))
-
-        row = cursor.fetchone()
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute("""
+                SELECT id_trasporto, tipo
+                FROM trasporti
+                WHERE id_trasporto = ?
+            """, (id_trasporto,)).fetchone()
 
         if not row:
             raise ValueError(f"Trasporto con id {id_trasporto} non trovato")
 
-        return cls(
-            id_trasporto=row[0],
-            tipo=row[1],
-            db_path=db_path,
-            capacita_max=row[2]
-        )
+        return cls(id_trasporto=row[0], tipo=row[1], db_path=db_path)
 
 
 class FattoriEmissione:
@@ -240,19 +218,15 @@ class FattoriEmissione:
         self._carica_fattori()
 
     def _carica_fattori(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT nome, CO2_TOT
-            FROM fattori_emissione
-        """)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            righe = conn.execute("""
+                SELECT nome, CO2_TOT
+                FROM fattori_emissione
+            """).fetchall()
 
         # Assegna direttamente i valori float come attributi
-        for nome, totale in cursor.fetchall():
+        for nome, totale in righe:
             setattr(self, nome, totale)
-
-        conn.close()
 
     def __repr__(self):
         return f"FattoriEmissione(db_path='{self.db_path}')"
@@ -264,4 +238,3 @@ class FattoriEmissione:
     def get(self, nome, default=None):
         """Metodo get simile ai dizionari"""
         return getattr(self, nome, default)
-

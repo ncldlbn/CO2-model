@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Ambiente virtuale
+venv/
+.venv/
+env/
+
+# File temporanei / di sistema
+.DS_Store
+Thumbs.db
+
+# Output e file di lavoro
+*.diff
+*.log

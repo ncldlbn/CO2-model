@@ -1,2 +1,4 @@
 pandas
 streamlit==1.45.1
+reportlab
+xlsxwriter

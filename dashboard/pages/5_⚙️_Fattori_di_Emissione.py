@@ -1,11 +1,7 @@
 import streamlit as st
 import sqlite3
-import sys
 import os
 import pandas as pd
-import time
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../src'))
 
 current_dir  = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, '../..'))
@@ -91,7 +87,7 @@ def main():
                     cursor.execute("""
                         UPDATE fattori_emissione
                         SET CO2_fossile = ?, CO2_biogenica = ?, CO2_dLUC = ?, CO2_TOT = ?
-                        WHERE nome = ?
+                        WHERE LOWER(nome) = LOWER(?)
                     """, (
                         row["CO₂ fossile"],
                         row["CO₂ biogenica"],
@@ -103,7 +99,6 @@ def main():
             if changes_made:
                 conn.commit()
                 st.toast("✅ Modifiche salvate con successo nel database!")
-                time.sleep(1)
                 st.rerun()
             else:
                 st.info("Nessuna modifica rilevata.")

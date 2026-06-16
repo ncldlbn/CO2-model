@@ -1,12 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import sys
 import os
-import time
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../src'))
-from objects import Trasporto 
 
 st.markdown("""
 <style>
@@ -27,7 +22,6 @@ def form_trasporto(conn, dati_esistenti=None, key_prefix="", is_nuovo=False):
     defaults = {
         "id_trasporto": None,
         "tipo": "",
-        "capacita_max": None,
         "co2_fossile": 0.0,
         "co2_biogenica": 0.0,
         "co2_dluc": 0.0,
@@ -50,22 +44,7 @@ def form_trasporto(conn, dati_esistenti=None, key_prefix="", is_nuovo=False):
     elif defaults["id_trasporto"] == 2:
         st.write("**Materiale trasportato:** Liquame / digestato liquido")
     elif defaults["id_trasporto"] is not None:
-        # Per altri trasporti, mostra il valore dal database se esiste
-        if "materiale" in defaults and defaults["materiale"]:
-            st.write(f"**Materiale trasportato:** {defaults['materiale']}")
-        else:
-            st.write("**Materiale trasportato:** Non specificato")
-
-    # Gestione capacità massima (può essere NULL per alcuni trasporti)
-    if defaults["tipo"] != "tubazione" and defaults["tipo"] != "Tubazione":
-        capacita_max = st.number_input("Capacità massima (mc) *", 
-                                     value=float(defaults["capacita_max"] or 0.0), 
-                                     min_value=0.0, 
-                                     step=0.1,
-                                     format="%.1f",  # Mostra 1 decimale per capacità
-                                     key=f"{key_prefix}_capacita")
-    else:
-        capacita_max = None
+        st.write("**Materiale trasportato:** Non specificato")
 
     # Sezione per i fattori di emissione
     st.subheader("Fattori di Emissione (kg CO2eq/tkm)")
@@ -119,74 +98,59 @@ def form_trasporto(conn, dati_esistenti=None, key_prefix="", is_nuovo=False):
     if defaults["id_trasporto"] is not None and not is_nuovo:  # Solo per trasporti esistenti
 
         if st.button("💾 Salva modifiche", key=f"{key_prefix}_salva", use_container_width=True):
-            # Validazione
-            errori = []
-            
-            if errori:
-                for errore in errori:
-                    st.error(errore)
-            else:
-                try:
-                    cursor = conn.cursor()
-                    # Aggiorna solo la capacità massima
-                    cursor.execute(
-                        "UPDATE trasporti SET capacita_max = ? WHERE id_trasporto = ?",
-                        (capacita_max, defaults["id_trasporto"])
-                    )
-                    
-                    # Aggiorna o inserisce il fattore di emissione con tutte le componenti
+            try:
+                cursor = conn.cursor()
+                # Aggiorna o inserisce il fattore di emissione con tutte le componenti
+                cursor.execute("""
+                    SELECT COUNT(*) FROM fattori_emissione
+                    WHERE categoria = 'trasporti' AND nome = ?
+                """, (defaults["tipo"],))
+
+                if cursor.fetchone()[0] > 0:
+                    # Aggiorna il fattore esistente con tutte le componenti
                     cursor.execute("""
-                        SELECT COUNT(*) FROM fattori_emissione 
+                        UPDATE fattori_emissione
+                        SET unita = ?,
+                            CO2_fossile = ?,
+                            CO2_biogenica = ?,
+                            CO2_dLUC = ?,
+                            CO2_TOT = ?
                         WHERE categoria = 'trasporti' AND nome = ?
-                    """, (defaults["tipo"],))
-                    
-                    if cursor.fetchone()[0] > 0:
-                        # Aggiorna il fattore esistente con tutte le componenti
-                        cursor.execute("""
-                            UPDATE fattori_emissione 
-                            SET unita = ?,
-                                CO2_fossile = ?, 
-                                CO2_biogenica = ?, 
-                                CO2_dLUC = ?, 
-                                CO2_TOT = ?
-                            WHERE categoria = 'trasporti' AND nome = ?
-                        """, (
-                            "kg CO2eq/tkm",
-                            float(co2_fossile),
-                            float(co2_biogenica),
-                            float(co2_dluc),
-                            float(co2_tot),
-                            defaults["tipo"]  # nome non modificato
-                        ))
-                    else:
-                        # Inserisce un nuovo fattore con tutte le componenti
-                        cursor.execute("""
-                            INSERT INTO fattori_emissione 
-                            (categoria, nome, unita, CO2_fossile, CO2_biogenica, CO2_dLUC, CO2_TOT)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            "trasporti",
-                            defaults["tipo"],  # usa il nome esistente
-                            "kg CO2eq/tkm",
-                            float(co2_fossile),
-                            float(co2_biogenica),
-                            float(co2_dluc),
-                            float(co2_tot)
-                        ))
-                    
-                    conn.commit()
-                    st.toast("✅ Modifiche salvate con successo!")
-                    time.sleep(1)
-                    st.rerun()
-                except sqlite3.IntegrityError as e:
-                    st.error(f"❌ Errore di integrità: {str(e)}")
-                except Exception as e:
-                    st.error(f"❌ Errore durante il salvataggio: {str(e)}")
+                    """, (
+                        "kg CO2eq/tkm",
+                        float(co2_fossile),
+                        float(co2_biogenica),
+                        float(co2_dluc),
+                        float(co2_tot),
+                        defaults["tipo"]  # nome non modificato
+                    ))
+                else:
+                    # Inserisce un nuovo fattore con tutte le componenti
+                    cursor.execute("""
+                        INSERT INTO fattori_emissione
+                        (categoria, nome, unita, CO2_fossile, CO2_biogenica, CO2_dLUC, CO2_TOT)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        "trasporti",
+                        defaults["tipo"],  # usa il nome esistente
+                        "kg CO2eq/tkm",
+                        float(co2_fossile),
+                        float(co2_biogenica),
+                        float(co2_dluc),
+                        float(co2_tot)
+                    ))
+
+                conn.commit()
+                st.toast("✅ Modifiche salvate con successo!")
+                st.rerun()
+            except sqlite3.IntegrityError as e:
+                st.error(f"❌ Errore di integrità: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Errore durante il salvataggio: {str(e)}")
 
     # Ritorna i dati per il nuovo trasporto
     return {
         "tipo": defaults["tipo"],
-        "capacita_max": capacita_max,
         "co2_fossile": co2_fossile,
         "co2_biogenica": co2_biogenica,
         "co2_dluc": co2_dluc,

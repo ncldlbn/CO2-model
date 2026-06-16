@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-from db import get_connection, create_tables
+from db import get_connection
 import sqlite3
-import time 
 
 st.markdown("""
 <style>
@@ -26,7 +25,9 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
         "olio_lubrificante": 0.0,
         "rifiuti": 0.0,
         "acqua": 0.0,
-        "scarichi": 0.0
+        "scarichi": 0.0,
+        "id_mezzo_liquido": 2,
+        "id_mezzo_solido": 1,
     }
 
     if dati_esistenti:
@@ -213,20 +214,51 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
             "tipo": tipo
         }
 
+    # SEZIONE MEZZI DI TRASPORTO
+    st.markdown("---")
+    st.subheader("Mezzi di trasporto")
+
+    cursor.execute("SELECT id_trasporto, tipo FROM trasporti WHERE id_trasporto != 0 ORDER BY tipo")
+    mezzi_rows = cursor.fetchall()
+    mezzi_dict = {row[1]: row[0] for row in mezzi_rows}
+    mezzi_nomi = list(mezzi_dict.keys())
+
+    def _mezzo_index(id_mezzo):
+        tipo = next((t for t, i in mezzi_dict.items() if i == id_mezzo), None)
+        return mezzi_nomi.index(tipo) if tipo in mezzi_nomi else 0
+
+    col1, col2 = st.columns(2)
+    with col1:
+        mezzo_liq_nome = st.selectbox(
+            "Trasporto biomassa liquida",
+            mezzi_nomi,
+            index=_mezzo_index(defaults["id_mezzo_liquido"]),
+            key=f"{key_prefix}_mezzo_liquido"
+        )
+        id_mezzo_liquido = mezzi_dict[mezzo_liq_nome]
+    with col2:
+        mezzo_sol_nome = st.selectbox(
+            "Trasporto biomassa solida",
+            mezzi_nomi,
+            index=_mezzo_index(defaults["id_mezzo_solido"]),
+            key=f"{key_prefix}_mezzo_solido"
+        )
+        id_mezzo_solido = mezzi_dict[mezzo_sol_nome]
+
     # SEZIONE CONSUMI E SCARTI
     st.markdown("---")
     st.subheader("Consumi e scarti")
-    
+
     col1, col2 = st.columns(2)
     with col1:
-        olio_lubrificante = st.number_input("Olio lubrificante [kg/anno]", value=float(defaults["olio_lubrificante"]), 
+        olio_lubrificante = st.number_input("Olio lubrificante [kg/anno]", value=float(defaults["olio_lubrificante"]),
                                           min_value=0.0, step=0.1, key=f"{key_prefix}_olio")
-        rifiuti = st.number_input("Rifiuti [kg/anno]", value=float(defaults["rifiuti"]), 
+        rifiuti = st.number_input("Rifiuti [kg/anno]", value=float(defaults["rifiuti"]),
                                 min_value=0.0, step=0.1, key=f"{key_prefix}_rifiuti")
     with col2:
-        acqua = st.number_input("Acqua [mc/anno]", value=float(defaults["acqua"]), 
+        acqua = st.number_input("Acqua [mc/anno]", value=float(defaults["acqua"]),
                               min_value=0.0, step=0.1, key=f"{key_prefix}_acqua")
-        scarichi = st.number_input("Scarichi [mc/anno]", value=float(defaults["scarichi"]), 
+        scarichi = st.number_input("Scarichi [mc/anno]", value=float(defaults["scarichi"]),
                                  min_value=0.0, step=0.1, key=f"{key_prefix}_scarichi")
     
     # SEZIONE CONFERITORI
@@ -283,7 +315,7 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                 with col4:
                     nuovo_carico = st.number_input(
                         "Carico (ton)",
-                        value=int(carico),
+                        value=int(carico or 0),
                         min_value=0,
                         step=1,
                         key=f"{key_prefix}_conf_{id_conferitore}_carico"
@@ -295,7 +327,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                         cursor.execute("DELETE FROM conferitori WHERE id_conferitore = ?", (id_conferitore,))
                         conn.commit()
                         st.toast("Conferitore eliminato")
-                        time.sleep(1)
                         st.rerun()
                 
                 conferitori_aggiornati[id_conferitore] = {
@@ -362,7 +393,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                             conn.commit()
                             st.toast("Conferitore aggiunto")
                             st.session_state[f"{key_prefix}_nuovo_conferitore_attivo"] = False
-                            time.sleep(1)
                             st.rerun()
                         else:
                             st.error("Il nome del conferitore è obbligatorio")
@@ -408,8 +438,8 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                 with col2:
                     tipo_selected = st.selectbox(
                         "Tipo",
-                        ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"],
-                        index=["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"].index(tipo) if tipo in ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"] else 0,
+                        ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Separato"],
+                        index=["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Separato"].index(tipo) if tipo in ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Separato"] else 0,
                         key=f"{key_prefix}_ric_{id_ricettore}_tipo"
                     )
                 
@@ -425,7 +455,7 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                 with col4:
                     nuovo_carico = st.number_input(
                         "Carico (ton)",
-                        value=int(carico),
+                        value=int(carico or 0),
                         min_value=0,
                         step=1,
                         key=f"{key_prefix}_ric_{id_ricettore}_carico"
@@ -437,7 +467,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                         cursor.execute("DELETE FROM ricettori WHERE id_ricettore = ?", (id_ricettore,))
                         conn.commit()
                         st.toast("Ricettore eliminato")
-                        time.sleep(1)
                         st.rerun()
                 
                 ricettori_aggiornati[id_ricettore] = {
@@ -468,7 +497,7 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
             with col2:
                 nuovo_tipo = st.selectbox(
                     "Tipo",
-                    ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Solido"],
+                    ["BioLNG", "BioCO2", "Digestato Liquido", "Digestato Separato"],
                     key=f"{key_prefix}_nuovo_tipo_ricettore"
                 )
             
@@ -503,7 +532,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                             conn.commit()
                             st.toast("Ricettore aggiunto")
                             st.session_state[f"{key_prefix}_nuovo_ricettore_attivo"] = False
-                            time.sleep(1)
                             st.rerun()
                         else:
                             st.error("Il nome del ricettore è obbligatorio")
@@ -523,13 +551,14 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                 
                 cursor.execute(
                     """
-                    UPDATE Impianto 
-                    SET nome = ?, 
-                        separazione = ?, olio_lubrificante = ?, rifiuti = ?, acqua = ?, scarichi = ?
+                    UPDATE Impianto
+                    SET nome = ?, separazione = ?, olio_lubrificante = ?, rifiuti = ?, acqua = ?, scarichi = ?,
+                        id_mezzo_liquido = ?, id_mezzo_solido = ?
                     WHERE id_impianto = ?
                     """,
-                    (nome, separazione, 
-                     olio_lubrificante, rifiuti, acqua, scarichi, defaults["id_impianto"])
+                    (nome, separazione,
+                     olio_lubrificante, rifiuti, acqua, scarichi,
+                     id_mezzo_liquido, id_mezzo_solido, defaults["id_impianto"])
                 )
                 
                 cursor.execute("DELETE FROM bilancio_energetico WHERE id_impianto = ?", (defaults["id_impianto"],))
@@ -569,7 +598,6 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
                 
                 conn.commit()
                 st.toast("✅ Modifiche salvate.")
-                time.sleep(1)
                 st.rerun()
 
         with col_delete:
@@ -603,6 +631,8 @@ def form_impianto(conn, dati_esistenti=None, key_prefix=""):
         "rifiuti": rifiuti,
         "acqua": acqua,
         "scarichi": scarichi,
+        "id_mezzo_liquido": id_mezzo_liquido,
+        "id_mezzo_solido": id_mezzo_solido,
         "bilancio_energetico": nuovo_bilancio,
         "nuovo_ricettore": None
     }
@@ -639,7 +669,7 @@ with tab1:
         selected_data = impianti[impianti['id_impianto'] == selected_id].iloc[0].to_dict()
         
         st.markdown("---")
-        form_impianto(conn, dati_esistenti=selected_data, key_prefix="selected")
+        form_impianto(conn, dati_esistenti=selected_data, key_prefix=f"selected_{selected_id}")
 
 # ---------------------------------------------------------------------------------------- #
 # AGGIUNGI NUOVO IMPIANTO
@@ -673,13 +703,15 @@ with tab2:
                 cursor.execute(
                     """
                     INSERT INTO Impianto (
-                        nome, separazione, 
-                        olio_lubrificante, rifiuti, acqua, scarichi
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        nome, separazione,
+                        olio_lubrificante, rifiuti, acqua, scarichi,
+                        id_mezzo_liquido, id_mezzo_solido
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (dati_nuovo["nome"], dati_nuovo["separazione"],
-                     dati_nuovo["olio_lubrificante"], dati_nuovo["rifiuti"], 
-                     dati_nuovo["acqua"], dati_nuovo["scarichi"])
+                     dati_nuovo["olio_lubrificante"], dati_nuovo["rifiuti"],
+                     dati_nuovo["acqua"], dati_nuovo["scarichi"],
+                     dati_nuovo["id_mezzo_liquido"], dati_nuovo["id_mezzo_solido"])
                 )
                 
                 id_impianto = cursor.lastrowid
@@ -697,7 +729,6 @@ with tab2:
                 
                 conn.commit()
                 st.toast(f"✅ Impianto '{dati_nuovo['nome']}' creato correttamente!")
-                time.sleep(1)
                 # Incrementa il contatore: Streamlit ricrea tutti i widget da zero
                 st.session_state["nuovo_impianto_form_counter"] += 1
                 st.rerun()

@@ -3,9 +3,8 @@ import pandas as pd
 import sqlite3
 import sys
 import os
-import time
 
-from db import get_connection, create_tables
+from db import get_connection
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../src'))
 from objects import Allevatore 
@@ -179,17 +178,12 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
         ore = None
 
     st.subheader("Dati Zootecnici")
-    
-    # Modalità inserimento - default sempre "Totali annui assoluti"
-    if defaults["uba_letame"] == 1 or defaults["uba_liquame"] == 1:
-        modalita_default = "Totali annui assoluti"
-    else:
-        modalita_default = "Totali annui assoluti"  # default fisso
 
+    # Modalità inserimento - default sempre "Totali annui assoluti"
     modalita_inserimento = st.radio(
         "Modalità di inserimento dati zootecnici:",
         ["Totali annui assoluti", "UBA e produzione annua"],
-        index=0 if modalita_default == "Totali annui assoluti" else 1,
+        index=0,
         key=f"{key_prefix}_modalita"
     )
 
@@ -389,7 +383,6 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
                     
                     conn.commit()
                     st.toast("✅ Modifiche salvate con successo!")
-                    time.sleep(1)
                     st.rerun()
                     
                 except ValueError as e:
@@ -411,7 +404,6 @@ def form_allevatore(conn, dati_esistenti=None, key_prefix=""):
                         conn.commit()
                         st.session_state[f"{key_prefix}_conferma_elimina"] = False
                         st.toast("✅ Allevatore eliminato con successo!")
-                        time.sleep(1)
                         st.rerun()
                 with col_annulla:
                     if st.button("❌ Annulla", key=f"{key_prefix}_annulla", use_container_width=True):
@@ -615,7 +607,6 @@ with tab2:
                 
                 conn.commit()
                 st.toast("✅ Allevatore creato con successo!")
-                time.sleep(1)
                 # Incrementa il contatore: Streamlit ricrea tutti i widget da zero
                 st.session_state["nuovo_allevatore_form_counter"] += 1
                 st.rerun()
